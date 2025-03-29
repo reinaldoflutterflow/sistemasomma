@@ -52,6 +52,10 @@
           <span class="user-name">Usuário</span>
           <span class="user-role">Admin</span>
         </div>
+        <button @click="handleLogout" class="logout-button">
+          <i class="fas fa-sign-out-alt"></i>
+          <span>Sair</span>
+        </button>
       </div>
     </aside>
 
@@ -153,10 +157,10 @@
               <h2>Check-ins Ativos</h2>
               <p>Crianças presentes hoje</p>
               <div class="section-actions">
-                <button class="btn-primary" @click="showCheckInModal = true">
+                <button class="btn-primary" @click="showCheckinModal = true">
                   <i class="fas fa-plus"></i> Novo Check-in
                 </button>
-                <button class="btn-icon">
+                <button class="btn-icon" @click="refreshCheckins">
                   <i class="fas fa-sync-alt"></i>
                 </button>
                 <button class="btn-icon">
@@ -164,18 +168,19 @@
                 </button>
               </div>
             </div>
-
             <div class="checkin-list">
-              <div v-for="checkin in checkinsAtivos" :key="checkin.id" class="checkin-item">
-                <div class="avatar">{{ checkin.crianca?.nome?.substring(0, 2).toUpperCase() }}</div>
+              <div v-for="checkin in criancasPresentes" :key="checkin.id" class="checkin-item">
+                <div class="avatar">
+                  <i class="fas fa-child"></i>
+                </div>
                 <div class="info">
-                  <h3>{{ checkin.crianca?.nome }}</h3>
+                  <h3>{{ checkin.nome }}</h3>
                   <div class="details">
-                    <span><i class="fas fa-door-open"></i> {{ checkin.sala?.nome_sala }}</span>
-                    <span><i class="fas fa-clock"></i> {{ new Date(checkin.data_checkin).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) }}</span>
+                    <span><i class="fas fa-door-open"></i> {{ checkin.sala }}</span>
+                    <span><i class="fas fa-clock"></i> {{ formatarData(checkin.horario_checkin) }}</span>
                   </div>
                 </div>
-                <button class="btn-outline">Check-out</button>
+                <button class="btn-outline" @click="handleCheckout(checkin.id)">Check-out</button>
               </div>
             </div>
           </div>
@@ -221,14 +226,14 @@
       </div>
 
       <!-- Modal de Check-in -->
-      <div v-if="showCheckInModal" class="modal-overlay">
+      <div v-if="showCheckinModal" class="modal-overlay">
         <div class="modal">
           <div class="modal-header">
             <h2>Novo Check-in</h2>
             <button class="modal-close" @click="closeModal">&times;</button>
           </div>
           
-          <form @submit.prevent="handleCheckIn">
+          <form @submit.prevent="handleCheckin">
             <div class="form-group">
               <label>Sala</label>
               <select
@@ -269,8 +274,8 @@
 
             <div class="form-actions">
               <button type="button" class="btn-secondary" @click="closeModal">Cancelar</button>
-              <button type="submit" class="btn-primary" :disabled="loading">
-                {{ loading ? 'Realizando check-in...' : 'Confirmar Check-in' }}
+              <button type="submit" class="btn-primary" :disabled="isLoading">
+                {{ isLoading ? 'Realizando check-in...' : 'Confirmar Check-in' }}
               </button>
             </div>
           </form>
@@ -384,7 +389,7 @@
 import { ref, onMounted, reactive, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { logout } from '../services/auth';
-import { getDashboardData, getCriancasPresentes } from '../services/dashboard';
+import { getDashboardData, getActiveCheckins } from '../services/dashboard';
 import type { DashboardData, CriancaPresente } from '../services/dashboard';
 import LineChart from './LineChart.vue';
 import { supabase } from '../supabase';
@@ -448,18 +453,23 @@ const currentDate = new Intl.DateTimeFormat('pt-BR', {
   year: 'numeric'
 }).format(new Date()).toLowerCase();
 
+const loading = ref(false);
+
 const loadDashboardData = async () => {
   try {
+    loading.value = true;
     const data = await getDashboardData();
     dashboardData.value = data;
   } catch (error) {
     console.error('Erro ao carregar dados do dashboard:', error);
+  } finally {
+    loading.value = false;
   }
 };
 
 const loadCriancasPresentes = async () => {
   try {
-    const data = await getCriancasPresentes();
+    const data = await getActiveCheckins();
     criancasPresentes.value = data;
   } catch (error) {
     console.error('Erro ao carregar crianças presentes:', error);
@@ -489,7 +499,7 @@ interface Sala {
   professor?: string;
 }
 
-const showCheckInModal = ref(false);
+const showCheckinModal = ref(false);
 const familias = ref<Familia[]>([]);
 const criancas = ref<Crianca[]>([]);
 const salas = ref<Sala[]>([]);
@@ -640,48 +650,38 @@ const showErrorAlert = (message: string) => {
   }, 3000);
 };
 
-const handleCheckIn = async () => {
+const handleCheckin = async () => {
+  if (!checkInForm.value.sala_id || !checkInForm.value.crianca_id) {
+    error.value = 'Por favor, preencha todos os campos';
+    return;
+  }
+
+  isLoading.value = true;
+  error.value = '';
+
   try {
-    const familia = familias.value.find(f => f.id === checkInForm.value.familia_id);
-    const crianca = criancas.value.find(c => c.id === checkInForm.value.crianca_id);
-    
-    const dadosQR = {
-      familia: {
-        id: familia?.id,
-        nome: familia?.nome_familia
-      },
-      crianca: {
-        id: crianca?.id,
-        nome: crianca?.nome
-      },
-      timestamp: new Date().toISOString()
-    };
-    
-    const qrCode = await gerarQRCode(dadosQR);
-    
-    const { data, error } = await supabase.from('checkins').insert({
-      crianca_id: checkInForm.value.crianca_id,
-      sala_id: checkInForm.value.sala_id,
-      responsavel_checkin: checkInForm.value.familia_id,
-      qr_gerado: qrCode
-    });
-
-    if (error) throw error;
-
-    showSuccessAlert('Check-in realizado com sucesso!');
-    closeModal();
-    await Promise.all([
-      loadDashboardData(),
-      loadCheckinsAtivos()
-    ]);
+    const result = await realizarCheckin(checkInForm.value.sala_id, checkInForm.value.crianca_id);
+    if (result.success) {
+      showCheckinModal.value = false;
+      checkInForm.value = {
+        sala_id: '',
+        familia_id: '',
+        crianca_id: ''
+      };
+      await loadCheckinsAtivos();
+    } else {
+      error.value = 'Erro ao realizar check-in';
+    }
   } catch (error) {
     console.error('Erro ao realizar check-in:', error);
-    showErrorAlert('Erro ao realizar check-in');
+    error.value = 'Erro ao realizar check-in';
+  } finally {
+    isLoading.value = false;
   }
 };
 
 const closeModal = () => {
-  showCheckInModal.value = false;
+  showCheckinModal.value = false;
   checkInForm.value = {
     familia_id: '',
     crianca_id: '',
@@ -739,7 +739,7 @@ const openCheckInModal = (salaId: string) => {
   
   // Define a sala selecionada
   checkInForm.value.sala_id = salaId;
-  showCheckInModal.value = true;
+  showCheckinModal.value = true;
 };
 
 const handleFamiliaChange = async () => {
@@ -747,10 +747,9 @@ const handleFamiliaChange = async () => {
     try {
       const criancasData = await getCriancasPorFamilia(checkInForm.value.familia_id, checkInForm.value.sala_id);
       criancas.value = criancasData;
-      console.log('Crianças carregadas:', criancas.value);
     } catch (error) {
       console.error('Erro ao carregar crianças:', error);
-      showErrorAlert('Erro ao carregar crianças da família');
+      error.value = 'Erro ao carregar crianças da família';
     }
   } else {
     criancas.value = [];
@@ -764,23 +763,44 @@ const handleSalaChange = () => {
   criancas.value = [];
 };
 
-onMounted(async () => {
+const formatarData = (data: string) => {
+  return new Date(data).toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const refreshCheckins = async () => {
   try {
-    const [data, checkins, familiasData, salasData] = await Promise.all([
-      getDashboardData(),
-      getCriancasPresentes(),
-      getFamilias(),
-      getSalas()
-    ]);
-    
-    dashboardData.value = data;
-    checkinsAtivos.value = checkins;
-    familias.value = familiasData;
-    salas.value = salasData;
-  } catch (err) {
-    alertMessage.value = 'Erro ao carregar dados do dashboard';
-    console.error(err);
+    criancasPresentes.value = await getCriancasPresentes();
+  } catch (error) {
+    console.error('Erro ao atualizar check-ins:', error);
   }
+};
+
+const handleCheckout = async (checkinId: string) => {
+  try {
+    // Implementar lógica de checkout
+    await refreshCheckins();
+  } catch (error) {
+    console.error('Erro ao fazer checkout:', error);
+  }
+};
+
+const loadActiveCheckins = async () => {
+  try {
+    const data = await getActiveCheckins();
+    activeCheckins.value = data;
+  } catch (error) {
+    console.error('Erro ao carregar checkins ativos:', error);
+  }
+};
+
+onMounted(async () => {
+  await Promise.all([
+    loadDashboardData(),
+    loadCriancasPresentes()
+  ]);
 });
 </script>
 
@@ -1492,5 +1512,30 @@ input[type="time"]:focus {
   .content {
     padding: 24px 16px;
   }
+}
+
+.logout-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  background: #f8f9ff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #374151;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.logout-button:hover {
+  background: #f3f4f6;
+  color: #2d00ff;
+}
+
+.logout-button i {
+  font-size: 16px;
 }
 </style> 

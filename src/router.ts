@@ -1,22 +1,28 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory, RouteRecordRaw, NavigationGuardNext, RouteLocationNormalized } from 'vue-router';
 import { isAuthenticated } from './services/auth';
-import Dashboard from './components/Dashboard.vue';
-import Login from './components/Login.vue';
 
-const routes = [
+const routes: RouteRecordRaw[] = [
   {
     path: '/',
     redirect: '/dashboard'
   },
   {
     path: '/login',
-    component: Login,
+    name: 'login',
+    component: () => import('./components/Login.vue'),
     meta: { requiresAuth: false }
   },
   {
     path: '/dashboard',
-    component: Dashboard,
+    name: 'dashboard',
+    component: () => import('./components/Dashboard.vue'),
     meta: { requiresAuth: true }
+  },
+  {
+    path: '/exemplo-zoom',
+    name: 'exemploZoom',
+    component: () => import('./components/ExemploZoom.vue'),
+    meta: { requiresAuth: false }
   }
 ];
 
@@ -25,13 +31,16 @@ const router = createRouter({
   routes
 });
 
-router.beforeEach(async (to, from, next) => {
-  const auth = await isAuthenticated();
-  
-  if (to.meta.requiresAuth && !auth) {
-    next('/login');
-  } else if (to.path === '/login' && auth) {
-    next('/dashboard');
+router.beforeEach((to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
+  if (to.matched.some(record => record.meta.requiresAuth)) {
+    if (!isAuthenticated()) {
+      next({
+        path: '/login',
+        query: { redirect: to.fullPath }
+      });
+    } else {
+      next();
+    }
   } else {
     next();
   }

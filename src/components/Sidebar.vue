@@ -51,12 +51,34 @@
         <span class="user-name">Usuário</span>
         <span class="user-role">Admin</span>
       </div>
+      <button @click="handleLogout" class="logout-button">
+        <i class="fas fa-sign-out-alt"></i>
+        <span>Sair</span>
+      </button>
     </div>
   </aside>
 </template>
 
 <script setup lang="ts">
-// Component logic here if needed
+import { useRouter } from 'vue-router';
+import { logout } from '../services/auth';
+
+const router = useRouter();
+
+const handleLogout = async () => {
+  try {
+    const result = await logout();
+    if (result.success) {
+      router.push('/login');
+    } else {
+      console.error('Erro ao fazer logout');
+      router.push('/login');
+    }
+  } catch (error) {
+    console.error('Erro ao fazer logout:', error);
+    router.push('/login');
+  }
+};
 </script>
 
 <style scoped>
@@ -130,6 +152,9 @@
   margin-top: auto;
   padding-top: 24px;
   border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .user-info {
@@ -137,6 +162,7 @@
   align-items: center;
   gap: 12px;
   color: #666;
+  padding: 8px;
 }
 
 .user-info i {
@@ -150,5 +176,36 @@
 .user-role {
   font-size: 12px;
   color: #6b7280;
+}
+
+.logout-button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 100%;
+  font-weight: 500;
+  margin-top: 10px;
+}
+
+.logout-button:hover {
+  background: #f0f2ff;
+  color: #0000FF;
+  border-color: #0000FF;
+}
+
+.logout-button i {
+  font-size: 16px;
+}
+
+.logout-button span {
+  font-size: 14px;
+  font-weight: 500;
 }
 </style> 
