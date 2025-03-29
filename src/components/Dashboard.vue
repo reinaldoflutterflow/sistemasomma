@@ -169,7 +169,11 @@
               </div>
             </div>
             <div class="checkin-list">
-              <div v-for="checkin in criancasPresentes" :key="checkin.id" class="checkin-item">
+              <div v-if="criancasPresentes.length === 0" class="no-data">
+                <i class="fas fa-info-circle"></i>
+                <p>Nenhum check-in encontrado para hoje</p>
+              </div>
+              <div v-else v-for="checkin in criancasPresentes" :key="checkin.id" class="checkin-item">
                 <div class="avatar">
                   <i class="fas fa-child"></i>
                 </div>
@@ -178,9 +182,18 @@
                   <div class="details">
                     <span><i class="fas fa-door-open"></i> {{ checkin.sala }}</span>
                     <span><i class="fas fa-clock"></i> {{ formatarData(checkin.horario_checkin) }}</span>
+                    <span><i class="fas fa-user"></i> {{ checkin.responsavel }}</span>
+                  </div>
+                  <div class="qr-info">
+                    <span><i class="fas fa-qrcode"></i> {{ checkin.qr_code.substring(0, 8) }}...</span>
                   </div>
                 </div>
-                <button class="btn-outline" @click="handleCheckout(checkin.id)">Check-out</button>
+                <div class="actions">
+                  <button class="btn-outline" @click="handleCheckout(checkin.id)">Check-out</button>
+                  <button class="btn-icon" @click="viewQRCode(checkin.qr_code)">
+                    <i class="fas fa-eye"></i>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -203,7 +216,11 @@
             </div>
 
             <div class="rooms-list">
-              <div v-for="sala in salas" :key="sala.id" class="room-item">
+              <div v-if="salas.length === 0" class="no-data">
+                <i class="fas fa-info-circle"></i>
+                <p>Nenhuma sala ativa encontrada</p>
+              </div>
+              <div v-else v-for="sala in salas" :key="sala.id" class="room-item">
                 <div class="room-icon">
                   <i class="fas fa-door-open"></i>
                 </div>
@@ -250,20 +267,20 @@
             
             <div class="form-group">
               <label>Família</label>
-              <select v-model="checkInForm.familia_id" @change="handleFamiliaChange" required>
-                <option value="">Selecione uma família</option>
-                <option v-for="familia in familias" :key="familia.id" :value="familia.id">
-                  {{ familia.nome_familia }}
-                </option>
-              </select>
+              <SearchableSelect
+                v-model="checkInForm.familia_id"
+                :options="familiasOptions"
+                @change="handleFamiliaChange"
+                placeholder="Selecione uma família"
+              />
             </div>
             
             <div class="form-group">
               <label>Criança</label>
               <select v-model="checkInForm.crianca_id" required>
                 <option value="">Selecione uma criança</option>
-                <option v-for="crianca in criancas" :key="crianca.id" :value="crianca.id">
-                  {{ crianca.nome }}
+                <option v-for="crianca in criancasFiltradas" :key="crianca.id" :value="crianca.id">
+                  {{ crianca.nome }} ({{ calcularIdade(crianca.data_nascimento) }} anos)
                 </option>
               </select>
             </div>
@@ -396,6 +413,7 @@ import { supabase } from '../supabase';
 import * as QRCode from 'qrcode';
 import { getFamilias, getSalas, getCriancasPorFamilia, realizarCheckin } from '../services/checkin';
 import type { Familia, Sala, Crianca } from '../services/checkin';
+import SearchableSelect from './SearchableSelect.vue';
 
 const router = useRouter();
 const selectedPeriod = ref(30);
@@ -542,21 +560,49 @@ const salasFiltradas = computed(() => {
   );
 });
 
+const familiasOptions = computed(() => {
+  return familias.value.map(familia => ({
+    value: familia.id,
+    label: familia.nome_familia
+  }));
+});
+
 const isFormValid = computed(() => {
   return checkInForm.value.familia_id && checkInForm.value.crianca_id && checkInForm.value.sala_id;
 });
 
 const loadOptions = async () => {
   try {
-    const [{ data: familiasData }, { data: criancasData }, { data: salasData }] = await Promise.all([
-      supabase.from('familias').select('id, nome_familia').eq('status', true),
-      supabase.from('criancas').select('id, nome, data_nascimento, familia_id'),
-      supabase.from('salas').select('*').eq('status', true)
-    ]);
-
+    // Carregar famílias com status true
+    const { data: familiasData, error: familiasError } = await supabase
+      .from('familias')
+      .select('id, nome_familia, telefone, email, status')
+      .eq('status', true)
+      .order('nome_familia');
+    
+    if (familiasError) throw familiasError;
     familias.value = familiasData || [];
+    console.log('Famílias carregadas:', familiasData);
+    
+    // Carregar todas as crianças
+    const { data: criancasData, error: criancasError } = await supabase
+      .from('criancas')
+      .select('id, nome, data_nascimento, familia_id, genero, restricao_alimentar, necessidade_especial');
+    
+    if (criancasError) throw criancasError;
     criancas.value = criancasData || [];
+    console.log('Crianças carregadas:', criancasData);
+    
+    // Carregar salas com status true
+    const { data: salasData, error: salasError } = await supabase
+      .from('salas')
+      .select('*')
+      .eq('status', true)
+      .order('nome_sala');
+    
+    if (salasError) throw salasError;
     salas.value = salasData || [];
+    console.log('Salas carregadas:', salasData);
   } catch (error) {
     console.error('Erro ao carregar opções:', error);
   }
@@ -743,18 +789,29 @@ const openCheckInModal = (salaId: string) => {
 };
 
 const handleFamiliaChange = async () => {
-  if (checkInForm.value.familia_id && checkInForm.value.sala_id) {
+  checkInForm.value.crianca_id = '';
+  
+  if (checkInForm.value.familia_id) {
     try {
-      const criancasData = await getCriancasPorFamilia(checkInForm.value.familia_id, checkInForm.value.sala_id);
-      criancas.value = criancasData;
+      // Buscar todas as crianças da família
+      const { data, error } = await supabase
+        .from('criancas')
+        .select('*')
+        .eq('familia_id', checkInForm.value.familia_id);
+      
+      if (error) throw error;
+      
+      // Atualizar a lista de crianças
+      criancas.value = data || [];
+      console.log('Crianças da família carregadas:', data);
+      
+      // O computed criancasFiltradas já vai filtrar por faixa etária se uma sala estiver selecionada
     } catch (error) {
       console.error('Erro ao carregar crianças:', error);
-      error.value = 'Erro ao carregar crianças da família';
     }
   } else {
     criancas.value = [];
   }
-  checkInForm.value.crianca_id = '';
 };
 
 const handleSalaChange = () => {
@@ -787,19 +844,44 @@ const handleCheckout = async (checkinId: string) => {
   }
 };
 
+const viewQRCode = (qrCode: string) => {
+  // Exibir o QR code em um modal ou popup
+  alert(`QR Code: ${qrCode}`);
+  // Aqui você pode implementar uma visualização melhor do QR code
+};
+
 const loadActiveCheckins = async () => {
   try {
     const data = await getActiveCheckins();
-    activeCheckins.value = data;
+    criancasPresentes.value = data;
+    console.log('Check-ins carregados:', data);
   } catch (error) {
     console.error('Erro ao carregar checkins ativos:', error);
+  }
+};
+
+const loadActiveSalas = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('salas')
+      .select('*')
+      .eq('status', true)
+      .order('nome_sala');
+    
+    if (error) throw error;
+    salas.value = data || [];
+    console.log('Salas ativas carregadas:', data);
+  } catch (error) {
+    console.error('Erro ao carregar salas ativas:', error);
   }
 };
 
 onMounted(async () => {
   await Promise.all([
     loadDashboardData(),
-    loadCriancasPresentes()
+    loadActiveCheckins(),
+    loadActiveSalas(),
+    loadOptions()
   ]);
 });
 </script>
@@ -1233,6 +1315,24 @@ body {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.no-data {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  color: #6b7280;
+  text-align: center;
+}
+
+.no-data i {
+  font-size: 32px;
+  margin-bottom: 12px;
+  color: #d1d5db;
 }
 
 .checkin-item,
@@ -1284,6 +1384,23 @@ body {
   gap: 16px;
   color: #666;
   font-size: 14px;
+  flex-wrap: wrap;
+}
+
+.qr-info {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #4b5563;
+  background: #f3f4f6;
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .details span {
@@ -1384,13 +1501,19 @@ body {
 
 .form-group select {
   width: 100%;
-  padding: 12px;
+  padding: 12px 30px 12px 12px; /* Aumentado o padding direito para dar espaço à seta */
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   font-size: 14px;
   color: #333;
   background-color: #fff;
   cursor: pointer;
+  appearance: none; /* Remove a aparência padrão do select */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
 }
 
 .form-group select:focus {

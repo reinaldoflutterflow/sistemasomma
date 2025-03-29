@@ -13,6 +13,8 @@ export interface CriancaPresente {
   nome: string;
   sala: string;
   horario_checkin: string;
+  qr_code: string;
+  responsavel: string;
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
@@ -52,28 +54,27 @@ export async function getActiveCheckins(): Promise<CriancaPresente[]> {
       .select(`
         id,
         data_checkin,
-        crianca:crianca_id (
-          nome
-        ),
-        sala:sala_id (
-          nome_sala
-        )
+        qr_gerado,
+        criancas:crianca_id (id, nome),
+        salas:sala_id (id, nome_sala),
+        familias:responsavel_checkin (id, nome_familia)
       `)
-      .gte('data_checkin', hoje.toISOString())
-      .is('data_checkout', null);
+      .gte('data_checkin', hoje.toISOString());
 
     if (error) {
       console.error('Erro na consulta:', error);
       throw error;
     }
 
-    console.log('Dados recebidos:', data);
+    console.log('Dados recebidos da tabela checkins:', data);
 
     return (data || []).map(checkin => ({
       id: checkin.id,
-      nome: checkin.crianca?.nome || '',
-      sala: checkin.sala?.nome_sala || '',
-      horario_checkin: checkin.data_checkin
+      nome: checkin.criancas?.nome || 'Sem nome',
+      sala: checkin.salas?.nome_sala || 'Sem sala',
+      horario_checkin: checkin.data_checkin,
+      qr_code: checkin.qr_gerado,
+      responsavel: checkin.familias?.nome_familia || 'Sem responsável'
     }));
   } catch (error) {
     console.error('Erro ao buscar checkins ativos:', error);
