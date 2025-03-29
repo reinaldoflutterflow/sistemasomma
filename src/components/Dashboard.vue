@@ -2,8 +2,7 @@
   <div class="dashboard-container">
     <aside class="sidebar">
       <div class="logo">
-        <i class="fas fa-church"></i>
-        <span class="logo-text">Igreja</span>
+        <img src="https://storage.googleapis.com/flutterflow-io-6f20.appspot.com/projects/aulas-y-t-74meoi/assets/5bwoip7attwb/branco.svg" alt="Logo" />
       </div>
 
       <div class="menu-section">
@@ -76,7 +75,6 @@
           </div>
           <div class="user-info">
             <span class="user-email">teste@teste.com</span>
-            <div class="user-avatar">US</div>
           </div>
         </div>
       </div>
@@ -922,20 +920,15 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 12px;
+  justify-content: center;
   margin-bottom: 32px;
   padding: 0 12px;
 }
 
-.logo i {
-  font-size: 24px;
-  color: white;
-}
-
-.logo-text {
-  font-size: 24px;
-  font-weight: 600;
-  color: white;
+.logo img {
+  max-width: 100%;
+  height: auto;
+  max-height: 60px;
 }
 
 .menu-section {
@@ -1025,7 +1018,7 @@ body {
 .search-container {
   display: flex;
   align-items: center;
-  background: #f8f9fa;
+  background: transparent;
   padding: 12px 16px;
   border-radius: 8px;
   width: 300px;
