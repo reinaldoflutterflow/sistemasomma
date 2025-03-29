@@ -101,9 +101,11 @@
               </div>
               <div class="stat-info">
                 <span class="stat-label">Famílias</span>
-                <h3 class="stat-value">1</h3>
-                <div class="stat-trend-container">
-                  <span class="stat-trend">↑ 3.4%</span>
+                <h3 class="stat-value">{{ dashboardData.total_familias }}</h3>
+                <div class="stat-trend-container" :class="{ 'positive-bg': dashboardData.tendencia_familias > 0, 'negative-bg': dashboardData.tendencia_familias < 0 }">
+                  <span class="stat-trend" :class="{ 'positive': dashboardData.tendencia_familias > 0, 'negative': dashboardData.tendencia_familias < 0 }">
+                    {{ dashboardData.tendencia_familias > 0 ? '↑' : '↓' }} {{ Math.abs(dashboardData.tendencia_familias) }}%
+                  </span>
                 </div>
               </div>
             </div>
@@ -114,9 +116,11 @@
               </div>
               <div class="stat-info">
                 <span class="stat-label">Crianças</span>
-                <h3 class="stat-value">1</h3>
-                <div class="stat-trend-container">
-                  <span class="stat-trend">↑ 2.1%</span>
+                <h3 class="stat-value">{{ dashboardData.total_criancas }}</h3>
+                <div class="stat-trend-container" :class="{ 'positive-bg': dashboardData.tendencia_criancas > 0, 'negative-bg': dashboardData.tendencia_criancas < 0 }">
+                  <span class="stat-trend" :class="{ 'positive': dashboardData.tendencia_criancas > 0, 'negative': dashboardData.tendencia_criancas < 0 }">
+                    {{ dashboardData.tendencia_criancas > 0 ? '↑' : '↓' }} {{ Math.abs(dashboardData.tendencia_criancas) }}%
+                  </span>
                 </div>
               </div>
             </div>
@@ -127,7 +131,7 @@
               </div>
               <div class="stat-info">
                 <span class="stat-label">Check-ins Hoje</span>
-                <h3 class="stat-value">1</h3>
+                <h3 class="stat-value">{{ dashboardData.checkins_hoje }}</h3>
                 <div class="stat-trend-container">
                   <span class="stat-trend">↑ 4.2%</span>
                 </div>
@@ -140,7 +144,7 @@
               </div>
               <div class="stat-info">
                 <span class="stat-label">Salas Ativas</span>
-                <h3 class="stat-value">3</h3>
+                <h3 class="stat-value">{{ dashboardData.total_salas }}</h3>
                 <div class="stat-trend-container">
                   <span class="stat-trend">↑ 1.8%</span>
                 </div>
@@ -1215,17 +1219,31 @@ body {
 }
 
 .stat-trend-container {
-  background: rgba(34, 197, 94, 0.1);
   padding: 4px 8px;
   border-radius: 100px;
   width: fit-content;
   margin-top: 12px;
 }
 
+.positive-bg {
+  background: rgba(34, 197, 94, 0.1);
+}
+
+.negative-bg {
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .stat-trend {
-  color: #22C55E;
   font-size: 14px;
   font-weight: 500;
+}
+
+.stat-trend.positive {
+  color: #22C55E;
+}
+
+.stat-trend.negative {
+  color: #EF4444;
 }
 
 /* Sections Grid */
