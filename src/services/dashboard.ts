@@ -1,5 +1,16 @@
 import { supabase } from '../supabase';
 import { getAccessToken } from './auth';
+import { 
+  mockDashboardData, 
+  mockSalas, 
+  mockFamilias, 
+  mockCriancas, 
+  mockCheckins,
+  mockCriancasPresentes 
+} from './mockData';
+
+// Verifica se está em ambiente de produção (Cloudflare Pages)
+const isProduction = window.location.hostname.includes('pages.dev');
 
 interface DashboardData {
   total_criancas: number;
@@ -21,6 +32,12 @@ export interface CriancaPresente {
 
 export async function getDashboardData(): Promise<DashboardData> {
   try {
+    // Se estiver em produção, retorna dados simulados
+    if (isProduction) {
+      console.log('Usando dados simulados para o dashboard');
+      return mockDashboardData;
+    }
+
     // Buscar total de famílias ativas
     const { data: familias, error: familiasError } = await supabase
       .from('familias')
@@ -174,6 +191,12 @@ export interface CheckoutData {
  */
 export async function verificarCheckoutExistente(checkinId: string): Promise<boolean> {
   try {
+    // Se estiver em produção, retorna false para simular que não existe checkout
+    if (isProduction) {
+      console.log('Usando dados simulados para verificar checkout existente');
+      return false;
+    }
+
     const { data, error, count } = await supabase
       .from('checkouts')
       .select('id', { count: 'exact' })
@@ -194,6 +217,12 @@ export async function verificarCheckoutExistente(checkinId: string): Promise<boo
 export async function finalizarCheckin(data: CheckoutData): Promise<boolean> {
   try {
     console.log('Finalizando check-in ID:', data.checkinId);
+    
+    // Se estiver em produção, retorna true para simular sucesso
+    if (isProduction) {
+      console.log('Usando dados simulados para finalizar check-in');
+      return true;
+    }
     
     // 0. Verificar se já existe um checkout para este check-in
     const checkoutExistente = await verificarCheckoutExistente(data.checkinId);
@@ -239,6 +268,12 @@ export async function finalizarCheckin(data: CheckoutData): Promise<boolean> {
 
 export async function getActiveCheckins(): Promise<CriancaPresente[]> {
   try {
+    // Se estiver em produção, retorna dados simulados
+    if (isProduction) {
+      console.log('Usando dados simulados para check-ins ativos');
+      return mockCriancasPresentes;
+    }
+
     console.log('Buscando check-ins ativos...');
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
