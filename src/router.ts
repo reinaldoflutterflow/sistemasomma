@@ -32,16 +32,22 @@ const router = createRouter({
 });
 
 router.beforeEach((to: RouteLocationNormalized, from: RouteLocationNormalized, next: NavigationGuardNext) => {
+  // Adicionar um console.log para debug em produção
+  console.log('Navegando para:', to.path, 'Autenticado:', isAuthenticated());
+  
   if (to.matched.some(record => record.meta.requiresAuth)) {
     if (!isAuthenticated()) {
+      // Redirecionar para login com query param
       next({
         path: '/login',
         query: { redirect: to.fullPath }
       });
     } else {
+      // Usuário autenticado, permitir acesso
       next();
     }
   } else {
+    // Rota pública, permitir acesso
     next();
   }
 });
