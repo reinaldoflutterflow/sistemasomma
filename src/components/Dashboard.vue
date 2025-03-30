@@ -477,6 +477,146 @@
         </div>
       </div>
 
+      <!-- Modal de Cadastro de Criança -->
+      <div v-if="showCriancaModal" class="modal-overlay">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>Cadastrar Criança</h2>
+            <button class="modal-close" @click="closeCriancaModal">&times;</button>
+          </div>
+          
+          <form @submit.prevent="handleCriancaSubmit">
+            <div class="form-group">
+              <label>Família</label>
+              <div class="search-select-container">
+                <input 
+                  type="text" 
+                  v-model="criancaForm.searchFamilia" 
+                  @input="filterFamilias"
+                  @focus="showFamiliaDropdown = true"
+                  placeholder="Pesquisar família..."
+                  class="form-control"
+                  required
+                />
+                <div v-if="showFamiliaDropdown && filteredFamilias.length > 0" class="search-select-dropdown">
+                  <div 
+                    v-for="familia in filteredFamilias" 
+                    :key="familia.id"
+                    class="search-select-item"
+                    @click="selectFamiliaForCrianca(familia)"
+                  >
+                    {{ familia.nome_familia }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Nome da Criança</label>
+              <input 
+                type="text" 
+                v-model="criancaForm.nome" 
+                required
+                placeholder="Ex: Maria Silva"
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Data de Nascimento</label>
+              <input 
+                type="date" 
+                v-model="criancaForm.data_nascimento" 
+                required
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Gênero</label>
+              <select 
+                v-model="criancaForm.genero" 
+                required
+                class="form-control"
+              >
+                <option value="" disabled selected>Selecione o gênero</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="criancaForm.restricao_alimentar" />
+                Possui restrição alimentar
+              </label>
+            </div>
+            
+            <div class="form-group" v-if="criancaForm.restricao_alimentar">
+              <label>Descrição da restrição alimentar</label>
+              <textarea 
+                v-model="criancaForm.desc_restricao_alimentar" 
+                required
+                placeholder="Descreva a restrição alimentar..."
+                class="form-control"
+                rows="3"
+              ></textarea>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="criancaForm.necessidade_especial" />
+                Possui necessidade especial
+              </label>
+            </div>
+            
+            <div class="form-group" v-if="criancaForm.necessidade_especial">
+              <label>Descrição da necessidade especial</label>
+              <textarea 
+                v-model="criancaForm.desc_necessidade_especial" 
+                required
+                placeholder="Descreva a necessidade especial..."
+                class="form-control"
+                rows="3"
+              ></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label>Observações adicionais</label>
+              <textarea 
+                v-model="criancaForm.observacao_adicional" 
+                placeholder="Observações adicionais sobre a criança..."
+                class="form-control"
+                rows="3"
+              ></textarea>
+            </div>
+            
+            <!-- Campo identificador removido, será gerado automaticamente -->
+            
+            <div class="form-group">
+              <label>Foto <span class="required">*</span></label>
+              <FileUpload 
+                :maxSizeMB="10" 
+                @file-selected="onCriancaFileSelected" 
+                @upload="onCriancaFileUpload"
+                @cancel="onCriancaFileCancel"
+              />
+              <div v-if="criancaFotoRequired && !criancaForm.foto" class="error-message">
+                Por favor, selecione uma foto
+              </div>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="btn-secondary" @click="closeCriancaModal">Cancelar</button>
+              <button type="submit" class="btn-primary" :disabled="isLoading">
+                {{ isLoading ? 'Cadastrando...' : 'Cadastrar Criança' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Modal de Cadastro de Família -->
       <div v-if="showFamiliaModal" class="modal-overlay">
         <div class="modal">
@@ -696,7 +836,7 @@
           </div>
           <span class="acao-label">Cadastrar Família</span>
         </div>
-        <div class="acao-card">
+        <div class="acao-card" @click="showCriancaModal = true">
           <div class="acao-icon">
             <i class="fas fa-child"></i>
           </div>
@@ -845,6 +985,7 @@ interface Sala {
 }
 
 const showCheckinModal = ref(false);
+const showCriancaModal = ref(false);
 const familias = ref<Familia[]>([]);
 const criancas = ref<Crianca[]>([]);
 const salas = ref<Sala[]>([]);
@@ -858,6 +999,25 @@ const checkInForm = ref({
 
 const responsaveis = ref<Responsavel[]>([]);
 const error = ref('');
+
+// Estado para validação da foto da criança
+const criancaFotoRequired = ref(false);
+
+// Formulário de cadastro de criança
+const criancaForm = reactive({
+  familia_id: '',
+  nome: '',
+  data_nascimento: '',
+  genero: '',
+  restricao_alimentar: false,
+  desc_restricao_alimentar: '',
+  necessidade_especial: false,
+  desc_necessidade_especial: '',
+  observacao_adicional: '',
+  foto: null,
+  searchFamilia: '',
+  selectedFamilia: null
+});
 
 const criancasFiltradas = computed(() => {
   if (!checkInForm.value.familia_id) return [];
@@ -1114,6 +1274,22 @@ const onCancelUpload = () => {
   console.log('Upload cancelado');
 };
 
+// Funções para manipular o upload de fotos para crianças
+const onCriancaFileSelected = (file) => {
+  criancaForm.foto = file;
+  console.log('Arquivo selecionado para criança:', file.name);
+};
+
+const onCriancaFileUpload = (file) => {
+  console.log('Arquivo enviado para criança:', file.name);
+  // O upload real será feito ao submeter o formulário
+};
+
+const onCriancaFileCancel = () => {
+  criancaForm.foto = null;
+  console.log('Upload cancelado para criança');
+};
+
 // Função para formatar o telefone com máscara
 const formatarTelefone = () => {
   // Remove todos os caracteres não numéricos
@@ -1210,6 +1386,124 @@ const closeSalaModal = () => {
   salaForm.professor = '';
 };
 
+const handleCriancaSubmit = async () => {
+  try {
+    // Resetar flag de validação
+    criancaFotoRequired.value = false;
+    
+    if (!criancaForm.familia_id) {
+      showErrorAlert('Por favor, selecione uma família');
+      return;
+    }
+    
+    // Validar se a foto foi selecionada
+    if (!criancaForm.foto) {
+      criancaFotoRequired.value = true;
+      showErrorAlert('Por favor, selecione uma foto');
+      return;
+    }
+    
+    isLoading.value = true;
+    console.log('Iniciando cadastro de criança');
+    
+    // Gerar identificador sequencial (KID001, KID002, etc.)
+    const identificador = await gerarIdentificadorSequencial();
+    console.log('Identificador gerado:', identificador);
+    
+    // Declarar a variável fotoUrl antes de usá-la
+    let fotoUrl = null;
+    
+    // Dados para inserir
+    const dadosCrianca = {
+      familia_id: criancaForm.familia_id,
+      nome: criancaForm.nome,
+      data_nascimento: criancaForm.data_nascimento,
+      genero: criancaForm.genero,
+      restricao_alimentar: criancaForm.restricao_alimentar,
+      necessidade_especial: criancaForm.necessidade_especial,
+      identificador: identificador
+      // O campo foto será adicionado após o upload
+    };
+    
+    // Adicionar descrições apenas se existirem
+    if (criancaForm.restricao_alimentar && criancaForm.desc_restricao_alimentar) {
+      dadosCrianca.desc_restricao_alimentar = criancaForm.desc_restricao_alimentar;
+    }
+    
+    if (criancaForm.necessidade_especial && criancaForm.desc_necessidade_especial) {
+      dadosCrianca.desc_necessidade_especial = criancaForm.desc_necessidade_especial;
+    }
+    
+    if (criancaForm.observacao_adicional) {
+      dadosCrianca.observacao_adicional = criancaForm.observacao_adicional;
+    }
+    
+    // Upload da foto para o webhook
+    if (criancaForm.foto) {
+      try {
+        console.log('Iniciando upload da foto para o webhook...');
+        
+        // Criar um FormData para enviar como multipart/form-data
+        const formData = new FormData();
+        formData.append('data', criancaForm.foto);
+        
+        // Fazer a chamada para o webhook
+        const response = await fetch('https://n8nwebhook.paraisoambiental.com.br/webhook/efd81894-d1bd-4e24-8d66-1d9eeca342f2', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Erro na resposta do webhook: ${response.status}`);
+        }
+        
+        // Processar a resposta
+        const responseData = await response.json();
+        console.log('Resposta do webhook:', responseData);
+        
+        // Extrair o webViewLink da resposta
+        if (responseData && responseData.webViewLink) {
+          fotoUrl = responseData.webViewLink;
+          console.log('Link da foto obtido:', fotoUrl);
+          
+          // Adicionar o link da foto aos dados da criança
+          dadosCrianca.foto = fotoUrl;
+        } else {
+          console.error('webViewLink não encontrado na resposta');
+        }
+      } catch (uploadError) {
+        console.error('Erro no processo de upload para o webhook:', uploadError);
+        showErrorAlert('Erro ao fazer upload da foto. Tente novamente.');
+        isLoading.value = false;
+        return;
+      }
+    }
+    
+    // Inserir no Supabase
+    const { data, error } = await supabase
+      .from('criancas')
+      .insert([dadosCrianca])
+      .select();
+    
+    if (error) throw error;
+    
+    console.log('Criança cadastrada com sucesso:', data);
+    showSuccessAlert('Criança cadastrada com sucesso!');
+    
+    // Fechar o modal e limpar o formulário
+    closeCriancaModal();
+    
+    // Recarregar dados se necessário
+    // loadCriancas();
+    
+  } catch (error) {
+    console.error('Erro ao cadastrar criança:', error);
+    showErrorAlert('Erro ao cadastrar criança. Tente novamente.');
+  } finally {
+    isLoading.value = false;
+  }
+};
+
 const handleFamiliaSubmit = async () => {
   try {
     isLoading.value = true;
@@ -1269,6 +1563,24 @@ const closeResponsavelModal = () => {
   showFamiliaDropdown.value = false;
 };
 
+const closeCriancaModal = () => {
+  showCriancaModal.value = false;
+  criancaForm.familia_id = '';
+  criancaForm.nome = '';
+  criancaForm.data_nascimento = '';
+  criancaForm.genero = '';
+  criancaForm.restricao_alimentar = false;
+  criancaForm.desc_restricao_alimentar = '';
+  criancaForm.necessidade_especial = false;
+  criancaForm.desc_necessidade_especial = '';
+  criancaForm.observacao_adicional = '';
+  criancaForm.foto = null;
+  criancaForm.searchFamilia = '';
+  criancaForm.selectedFamilia = null;
+  showFamiliaDropdown.value = false;
+  criancaFotoRequired.value = false;
+};
+
 const filterFamilias = () => {
   if (!responsavelForm.searchFamilia) {
     filteredFamilias.value = allFamilias.value;
@@ -1285,6 +1597,13 @@ const selectFamilia = (familia) => {
   responsavelForm.familia_id = familia.id;
   responsavelForm.searchFamilia = familia.nome_familia;
   responsavelForm.selectedFamilia = familia;
+  showFamiliaDropdown.value = false;
+};
+
+const selectFamiliaForCrianca = (familia) => {
+  criancaForm.familia_id = familia.id;
+  criancaForm.searchFamilia = familia.nome_familia;
+  criancaForm.selectedFamilia = familia;
   showFamiliaDropdown.value = false;
 };
 
@@ -1305,6 +1624,41 @@ const loadFamilias = async () => {
   } catch (error) {
     console.error('Erro ao carregar famílias:', error);
     showErrorAlert('Erro ao carregar lista de famílias');
+  }
+};
+
+// Função para gerar identificador sequencial (KID001, KID002, etc.)
+const gerarIdentificadorSequencial = async () => {
+  try {
+    // Buscar o último registro da tabela criancas ordenado pelo identificador
+    const { data, error } = await supabase
+      .from('criancas')
+      .select('identificador')
+      .order('identificador', { ascending: false })
+      .limit(1);
+    
+    if (error) throw error;
+    
+    let proximoNumero = 1;
+    
+    // Se houver registros, extrair o número do último identificador e incrementar
+    if (data && data.length > 0 && data[0].identificador) {
+      const ultimoIdentificador = data[0].identificador;
+      const match = ultimoIdentificador.match(/KID(\d+)/);
+      
+      if (match && match[1]) {
+        proximoNumero = parseInt(match[1]) + 1;
+      }
+    }
+    
+    // Formatar o número com zeros à esquerda (ex: 001, 002, etc.)
+    const numeroFormatado = proximoNumero.toString().padStart(3, '0');
+    return `KID${numeroFormatado}`;
+  } catch (error) {
+    console.error('Erro ao gerar identificador sequencial:', error);
+    // Em caso de erro, gerar um identificador baseado no timestamp
+    const timestamp = new Date().getTime();
+    return `KID${timestamp}`;
   }
 };
 
