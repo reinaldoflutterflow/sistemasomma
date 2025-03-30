@@ -400,6 +400,48 @@
       <div v-if="showAlert" :class="['alert', `alert-${alertType}`]">
         {{ alertMessage }}
       </div>
+
+      <div class="content">
+        <h2 class="acoes-title">Ações Rápidas</h2>
+        <div class="acoes-grid">
+        <div class="acao-card">
+          <div class="acao-icon">
+            <i class="fas fa-check-circle"></i>
+          </div>
+          <span class="acao-label">Novo Check-in</span>
+        </div>
+        <div class="acao-card">
+          <div class="acao-icon">
+            <i class="fas fa-sign-out-alt"></i>
+          </div>
+          <span class="acao-label">Novo Check-out</span>
+        </div>
+        <div class="acao-card">
+          <div class="acao-icon">
+            <i class="fas fa-users"></i>
+          </div>
+          <span class="acao-label">Cadastrar Família</span>
+        </div>
+        <div class="acao-card">
+          <div class="acao-icon">
+            <i class="fas fa-child"></i>
+          </div>
+          <span class="acao-label">Cadastrar Criança</span>
+        </div>
+        <div class="acao-card">
+          <div class="acao-icon">
+            <i class="fas fa-chalkboard"></i>
+          </div>
+          <span class="acao-label">Gerenciar Salas</span>
+        </div>
+        <div class="acao-card">
+          <div class="acao-icon">
+            <i class="fas fa-tag"></i>
+          </div>
+          <span class="acao-label">Imprimir Etiquetas</span>
+        </div>
+      </div>
+    </div>
     </main>
   </div>
 </template>
@@ -1246,6 +1288,69 @@ body {
   color: #EF4444;
 }
 
+/* Ações Rápidas */
+.acoes-rapidas {
+  background: white;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 32px;
+}
+
+.acoes-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111;
+  margin-bottom: 24px;
+}
+
+.acoes-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.acao-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.acao-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.acao-icon {
+  width: 40px;
+  height: 40px;
+  background: #f0f2ff;
+  color: #0000FF;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.acao-icon i {
+  font-size: 18px;
+  color: #0000FF;
+}
+
+.acao-label {
+  font-size: 14px;
+  color: #333;
+  text-align: center;
+  font-weight: 500;
+}
+
 /* Sections Grid */
 .sections-grid {
   display: grid;
@@ -1358,9 +1463,9 @@ body {
 .avatar {
   width: 40px;
   height: 40px;
-  background: #0000FF;
-  color: white;
-  border-radius: 50%;
+  background: #f0f2ff;
+  color: #0000FF;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
