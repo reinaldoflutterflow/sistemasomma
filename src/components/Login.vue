@@ -87,7 +87,16 @@ const handleLogin = async () => {
     const response = await login(email.value, password.value)
     
     if (response.success) {
-      router.push('/dashboard')
+      // Obter o redirecionamento da URL se existir
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || '/dashboard'
+      
+      // Usar replace em vez de push para evitar problemas de navegação
+      router.replace(redirect)
+      
+      // Forçar um reload da página após um breve delay para garantir que o localStorage seja aplicado
+      setTimeout(() => {
+        window.location.href = redirect
+      }, 100)
     } else {
       error.value = response.message
     }
