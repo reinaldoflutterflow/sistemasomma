@@ -415,9 +415,12 @@
               <input 
                 type="text" 
                 v-model="responsavelForm.telefone" 
+                @input="formatarTelefone"
                 required
-                placeholder="Ex: (11) 99999-9999"
+                placeholder="Ex: (11) 9 9999-9999"
                 class="form-control"
+                maxlength="16"
+                autocomplete="tel"
               />
             </div>
             
@@ -449,18 +452,19 @@
               <small class="form-text text-muted">Esta informação será salva nas observações do responsável</small>
             </div>
             
-            <div class="form-group checkbox-group">
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="responsavelForm.whatsapp" />
-                Possui WhatsApp
-              </label>
-            </div>
+            <!-- Checkboxes removidos conforme solicitado -->
             
-            <div class="form-group checkbox-group">
-              <label class="checkbox-label">
-                <input type="checkbox" v-model="responsavelForm.pode_fazer_checkout" />
-                Pode realizar check-out
-              </label>
+            <div class="form-group">
+              <label>Foto <span class="required">*</span></label>
+              <FileUpload 
+                :maxSizeMB="10" 
+                @file-selected="onFileSelected" 
+                @upload="onFileUpload"
+                @cancel="onCancelUpload"
+              />
+              <div v-if="fotoRequired && !responsavelForm.foto" class="error-message">
+                Por favor, selecione uma foto
+              </div>
             </div>
             
             <div class="form-actions">
@@ -724,6 +728,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from 'vue';
+import FileUpload from './FileUpload.vue';
 import { useRouter } from 'vue-router';
 import { logout } from '../services/auth';
 import { getDashboardData, getActiveCheckins, finalizarCheckin, verificarCheckoutExistente } from '../services/dashboard';
@@ -1092,18 +1097,83 @@ const familiaForm = reactive({
 
 const showResponsavelModal = ref(false);
 const showFamiliaDropdown = ref(false);
+
+// Métodos para o upload de arquivo
+const onFileSelected = (file) => {
+  responsavelForm.foto = file;
+  console.log('Arquivo selecionado:', file.name);
+};
+
+const onFileUpload = (file) => {
+  console.log('Arquivo enviado:', file.name);
+  // O upload real será feito ao submeter o formulário
+};
+
+const onCancelUpload = () => {
+  responsavelForm.foto = null;
+  console.log('Upload cancelado');
+};
+
+// Função para formatar o telefone com máscara
+const formatarTelefone = () => {
+  // Remove todos os caracteres não numéricos
+  let numeros = responsavelForm.telefone.replace(/\D/g, '');
+  
+  // Limita a 11 dígitos
+  numeros = numeros.substring(0, 11);
+  
+  let telefoneFormatado = '';
+  
+  // Aplica a máscara (xx) x xxxx-xxxx
+  if (numeros.length > 0) {
+    // Adiciona o DDD entre parênteses
+    telefoneFormatado = '(' + numeros.substring(0, Math.min(2, numeros.length));
+    
+    if (numeros.length > 2) {
+      // Fecha o parêntese do DDD
+      telefoneFormatado += ') ';
+      
+      // Adiciona o primeiro dígito após o DDD
+      telefoneFormatado += numeros.substring(2, 3);
+      
+      if (numeros.length > 3) {
+        // Adiciona espaço após o primeiro dígito
+        telefoneFormatado += ' ';
+        
+        // Adiciona os próximos 4 dígitos
+        if (numeros.length > 3) {
+          telefoneFormatado += numeros.substring(3, Math.min(7, numeros.length));
+        }
+        
+        if (numeros.length > 7) {
+          // Adiciona hífen antes dos últimos 4 dígitos
+          telefoneFormatado += '-';
+          
+          // Adiciona os últimos 4 dígitos
+          telefoneFormatado += numeros.substring(7, Math.min(11, numeros.length));
+        }
+      }
+    }
+  }
+  
+  // Atualiza o valor no formulário com a máscara
+  responsavelForm.telefone = telefoneFormatado;
+};
 const responsavelForm = reactive({
   familia_id: '',
   nome: '',
   telefone: '',
   parentesco: '',
   outroParentesco: '',
-  whatsapp: true,
-  pode_fazer_checkout: false,
+  whatsapp: true, // Sempre true
+  pode_fazer_checkout: true, // Sempre true
   searchFamilia: '',
   selectedFamilia: null,
-  observacoes: ''
+  observacoes: '',
+  foto: null
 });
+
+const fotoRequired = ref(false);
 
 const allFamilias = ref([]);
 const filteredFamilias = ref([]);
@@ -1191,10 +1261,11 @@ const closeResponsavelModal = () => {
   responsavelForm.parentesco = '';
   responsavelForm.outroParentesco = '';
   responsavelForm.whatsapp = true;
-  responsavelForm.pode_fazer_checkout = false;
+  responsavelForm.pode_fazer_checkout = true;
   responsavelForm.searchFamilia = '';
   responsavelForm.selectedFamilia = null;
   responsavelForm.observacoes = '';
+  responsavelForm.foto = null;
   showFamiliaDropdown.value = false;
 };
 
@@ -1239,6 +1310,11 @@ const loadFamilias = async () => {
 
 const handleResponsavelSubmit = async () => {
   try {
+    // Remover a máscara do telefone antes de salvar
+    const telefoneNumerico = responsavelForm.telefone.replace(/\D/g, '');
+    // Resetar flag de validação
+    fotoRequired.value = false;
+    
     if (!responsavelForm.familia_id) {
       showErrorAlert('Por favor, selecione uma família');
       return;
@@ -1247,6 +1323,13 @@ const handleResponsavelSubmit = async () => {
     // Validar se foi especificado o outro parentesco quando selecionado "Outro"
     if (responsavelForm.parentesco === 'Outro' && !responsavelForm.outroParentesco) {
       showErrorAlert('Por favor, especifique o parentesco');
+      return;
+    }
+    
+    // Validar se a foto foi selecionada
+    if (!responsavelForm.foto) {
+      fotoRequired.value = true;
+      showErrorAlert('Por favor, selecione uma foto');
       return;
     }
     
@@ -1260,19 +1343,64 @@ const handleResponsavelSubmit = async () => {
         (observacoes ? '\n' + observacoes : '');
     }
     
+    // Declarar a variável fotoUrl antes de usá-la
+    let fotoUrl = null;
+    
     // Dados para inserir - versão simplificada
     const dadosResponsavel = {
       familia_id: responsavelForm.familia_id,
       nome: responsavelForm.nome,
-      telefone: responsavelForm.telefone,
+      telefone: telefoneNumerico, // Telefone sem máscara
       parentesco: responsavelForm.parentesco,
-      whatsapp: responsavelForm.whatsapp || false,
-      pode_fazer_checkout: responsavelForm.pode_fazer_checkout || false
+      whatsapp: true, // Sempre true
+      pode_fazer_checkout: true // Sempre true
+      // O campo foto será adicionado após o upload
     };
     
     // Adicionar observações apenas se existirem
     if (observacoes) {
       dadosResponsavel.observacoes = observacoes;
+    }
+    
+    // Upload da foto para o webhook
+    if (responsavelForm.foto) {
+      try {
+        console.log('Iniciando upload da foto para o webhook...');
+        
+        // Criar um FormData para enviar como multipart/form-data
+        const formData = new FormData();
+        formData.append('data', responsavelForm.foto);
+        
+        // Fazer a chamada para o webhook
+        const response = await fetch('https://n8nwebhook.paraisoambiental.com.br/webhook/efd81894-d1bd-4e24-8d66-1d9eeca342f2', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (!response.ok) {
+          throw new Error(`Erro na resposta do webhook: ${response.status}`);
+        }
+        
+        // Processar a resposta
+        const responseData = await response.json();
+        console.log('Resposta do webhook:', responseData);
+        
+        // Extrair o webViewLink da resposta
+        if (responseData && responseData.webViewLink) {
+          fotoUrl = responseData.webViewLink;
+          console.log('Link da foto obtido:', fotoUrl);
+          
+          // Adicionar o link da foto aos dados do responsável
+          dadosResponsavel.foto = fotoUrl;
+        } else {
+          console.error('webViewLink não encontrado na resposta');
+        }
+      } catch (uploadError) {
+        console.error('Erro no processo de upload para o webhook:', uploadError);
+        showErrorAlert('Erro ao fazer upload da foto. Tente novamente.');
+        isLoading.value = false;
+        return;
+      }
     }
     
     console.log('Dados para inserir:', JSON.stringify(dadosResponsavel));
@@ -2229,33 +2357,61 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  overflow: hidden; /* Evita scroll na página de fundo */
+  backdrop-filter: blur(2px); /* Adiciona um efeito de desfoque no fundo */
 }
 
 .modal {
   background: white;
   border-radius: 16px;
-  padding: 24px;
+  padding: 0; /* Removemos o padding geral para controlar melhor as áreas */
   width: 100%;
   max-width: 500px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  max-height: 90vh; /* Limita a altura a 90% da altura da viewport */
+  margin: 20px 0; /* Margem de segurança no topo e no fundo */
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  /* Corrige o problema de conteúdo aparecendo atrás do modal */
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  isolation: isolate;
+  backface-visibility: hidden;
+  position: relative;
+  overflow: hidden; /* Esconde qualquer conteúdo que ultrapasse os limites */
 }
 
 .modal-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+  padding: 24px 24px 12px;
+  border-bottom: 1px solid #f0f0f0;
+  margin: 0;
 }
 
 .modal-header h2 {
   font-size: 20px;
   font-weight: 600;
   color: #111;
+}
+
+form {
+  width: 100%;
+  overflow-y: auto; /* Adiciona scroll vertical apenas no formulário */
+  padding: 0 24px;
+  box-sizing: border-box;
+  margin: 24px 0;
+  max-height: calc(90vh - 140px); /* Altura máxima considerando o header e footer */
 }
 
 .modal-close {
@@ -2275,6 +2431,17 @@ body {
   margin-bottom: 8px;
   color: #333;
   font-weight: 500;
+}
+
+.form-group .required {
+  color: #ff0000;
+  margin-left: 4px;
+}
+
+.error-message {
+  color: #ff0000;
+  font-size: 12px;
+  margin-top: 4px;
 }
 
 .form-group select {
@@ -2304,7 +2471,14 @@ body {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  margin-top: 24px;
+  position: sticky;
+  bottom: 0;
+  background: white;
+  padding: 12px 24px 24px;
+  border-top: 1px solid #f0f0f0;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .btn-secondary {

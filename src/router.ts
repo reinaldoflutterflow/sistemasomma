@@ -23,6 +23,12 @@ const routes: RouteRecordRaw[] = [
     name: 'exemploZoom',
     component: () => import('./components/ExemploZoom.vue'),
     meta: { requiresAuth: false }
+  },
+  {
+    path: '/upload',
+    name: 'upload',
+    component: () => import('./components/FormularioComUpload.vue'),
+    meta: { requiresAuth: false }
   }
 ];
 
