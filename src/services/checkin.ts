@@ -138,7 +138,7 @@ export async function realizarCheckin(sala_id: string, crianca_id: string, respo
     // Buscar informações da sala
     const { data: salaData, error: salaError } = await supabase
       .from('salas')
-      .select('nome_sala')
+      .select('nome_sala, professor')
       .eq('id', sala_id)
       .single();
     
@@ -199,6 +199,57 @@ export async function realizarCheckin(sala_id: string, crianca_id: string, respo
       ])
 
     if (error) throw error
+    
+    // Obter telefone do responsável da família
+    let telefone = '';
+    try {
+      const { data: familiaData, error: familiaError } = await supabase
+        .from('familias')
+        .select('telefone')
+        .eq('id', criancaData.familia_id)
+        .single();
+      
+      if (!familiaError && familiaData) {
+        telefone = familiaData.telefone || '';
+      }
+    } catch (err) {
+      console.error('Erro ao buscar telefone da família:', err);
+    }
+    
+    // Formatar a data no formato: Dia 30 de Março
+    const dataAtual = new Date();
+    const dia = dataAtual.getDate();
+    const meses = [
+      'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+      'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+    ];
+    const mes = meses[dataAtual.getMonth()];
+    const dataFormatada = `Dia ${dia} de ${mes}`;
+    
+    // Enviar notificação para o webhook
+    try {
+      await fetch('https://n8nwebhook.paraisoambiental.com.br/webhook/c4f64bdf-0da5-4de0-94c7-9c630751555b', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          responsavel: responsavelData.nome,
+          igreja: 'AD Resgatados',
+          crianca: criancaData.nome,
+          data: dataFormatada,
+          sala: salaData.nome_sala,
+          professora: salaData.professor || 'Não informado',
+          familia_id: criancaData.familia_id,
+          telefone: telefone
+        })
+      });
+      console.log('Notificação de check-in enviada com sucesso');
+    } catch (webhookError) {
+      console.error('Erro ao enviar notificação de check-in:', webhookError);
+      // Não falhar o check-in se a notificação falhar
+    }
+    
     return { success: true }
   } catch (error) {
     console.error('Erro ao realizar check-in:', error)
