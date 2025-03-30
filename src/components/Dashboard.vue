@@ -309,6 +309,52 @@
         </div>
       </div>
 
+      <!-- Modal de Opções de Check-out -->
+      <div v-if="showCheckoutOptionsModal" class="modal-overlay">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>Opções de Check-out</h2>
+            <button class="modal-close" @click="showCheckoutOptionsModal = false">&times;</button>
+          </div>
+          <div class="checkout-options">
+            <div class="option-section">
+              <h3>Escolha uma opção:</h3>
+              
+              <div class="option-card" @click="showCheckoutCodigoForm = true">
+                <div class="option-icon">
+                  <i class="fas fa-keyboard"></i>
+                </div>
+                <span class="option-label">Via Código</span>
+              </div>
+              
+              <div class="option-card" @click="abrirQRCodeScanner">
+                <div class="option-icon">
+                  <i class="fas fa-qrcode"></i>
+                </div>
+                <span class="option-label">QR Code</span>
+              </div>
+            </div>
+            
+            <div v-if="showCheckoutCodigoForm" class="codigo-form">
+              <div class="form-group">
+                <label>Digite o código de check-out:</label>
+                <div class="codigo-input-group">
+                  <input 
+                    type="text" 
+                    v-model="checkoutCodigo" 
+                    placeholder="Ex: ABC123"
+                    class="form-control"
+                  />
+                  <button class="btn-primary" @click="buscarPorCodigo" :disabled="isLoading">
+                    {{ isLoading ? 'Buscando...' : 'Buscar' }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
       <!-- Modal de Check-out -->
       <div v-if="showCheckoutModal" class="modal-overlay">
         <div class="modal checkout-modal">
@@ -319,6 +365,14 @@
           <div class="checkout-info" v-if="selectedCheckin">
             <div class="checkout-section">
               <h3>Informações da Criança</h3>
+              <div class="view-photo-container" v-if="selectedCheckin.fotoCrianca">
+                <button 
+                  class="view-photo-btn"
+                  @click="openPhotoWebView(selectedCheckin.fotoCrianca, 'Foto da Criança')"
+                >
+                  <i class="fas fa-image"></i> Visualizar Foto
+                </button>
+              </div>
               <p><strong>Nome:</strong> {{ selectedCheckin.nome }}</p>
             </div>
             <div class="checkout-section">
@@ -328,6 +382,14 @@
             </div>
             <div class="checkout-section">
               <h3>Informações do Responsável</h3>
+              <div class="view-photo-container" v-if="selectedCheckin.fotoResponsavel">
+                <button 
+                  class="view-photo-btn"
+                  @click="openPhotoWebView(selectedCheckin.fotoResponsavel, 'Foto do Responsável')"
+                >
+                  <i class="fas fa-image"></i> Visualizar Foto
+                </button>
+              </div>
               <p><strong>Família:</strong> {{ selectedCheckin.familia }}</p>
               <p><strong>Responsável:</strong> {{ selectedCheckin.responsavel }} <span v-if="selectedCheckin.parentesco">({{ selectedCheckin.parentesco }})</span></p>
             </div>
@@ -336,6 +398,32 @@
             <button type="button" class="btn-secondary" @click="closeCheckoutModal">Cancelar</button>
             <button type="button" class="btn-primary" @click="realizarCheckout(selectedCheckin.id)" :disabled="isLoading">
               {{ isLoading ? 'Processando...' : 'Confirmar Check-out' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de WebView para Foto -->
+      <div v-if="showPhotoWebViewModal" class="modal-overlay">
+        <div class="modal-content webview-modal">
+          <div class="modal-header">
+            <h2>{{ photoWebViewTitle }}</h2>
+            <button class="modal-close" @click="closePhotoWebView">&times;</button>
+          </div>
+          <div class="webview-container">
+            <iframe 
+              :src="photoWebViewSrc" 
+              class="photo-webview" 
+              frameborder="0" 
+              allowfullscreen
+              allow="autoplay; encrypted-media; picture-in-picture"
+              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+            ></iframe>
+          </div>
+          <div class="webview-fallback">
+            <p>Se a imagem não carregar corretamente, você pode:</p>
+            <button class="btn-secondary" @click="openInNewTab(photoWebViewSrc)">
+              <i class="fas fa-external-link-alt"></i> Abrir em Nova Aba
             </button>
           </div>
         </div>
@@ -986,6 +1074,8 @@ interface Sala {
 
 const showCheckinModal = ref(false);
 const showCriancaModal = ref(false);
+const showCheckoutOptionsModal = ref(false);
+const checkoutCodigo = ref('');
 const familias = ref<Familia[]>([]);
 const criancas = ref<Crianca[]>([]);
 const salas = ref<Sala[]>([]);
@@ -1860,10 +1950,207 @@ const showCheckoutModal = ref(false);
 const selectedCheckin = ref<any>(null);
 
 const showQRScannerModal = ref(false);
+const showCheckoutCodigoForm = ref(false);
+const showPhotoWebViewModal = ref(false);
+const photoWebViewSrc = ref('');
+const photoWebViewTitle = ref('');
 
 const handleCheckout = async () => {
-  // Abrir o scanner de QR Code
+  // Abrir o modal de opções de checkout
+  showCheckoutOptionsModal.value = true;
+};
+
+const abrirQRCodeScanner = () => {
+  // Fechar o modal de opções e abrir o scanner de QR Code
+  showCheckoutOptionsModal.value = false;
   showQRScannerModal.value = true;
+};
+
+const buscarPorCodigo = async () => {
+  try {
+    if (!checkoutCodigo.value) {
+      showErrorAlert('Por favor, digite um código');
+      return;
+    }
+    
+    isLoading.value = true;
+    
+    // Obter a data atual formatada como YYYY-MM-DD
+    const hoje = new Date();
+    const dataHoje = hoje.toISOString().split('T')[0];
+    
+    // Buscar o checkin pelo código e data atual
+    const { data, error } = await supabase
+      .from('checkins')
+      .select(`
+        id,
+        crianca_id,
+        sala_id,
+        data_checkin,
+        responsavel_checkin,
+        qr_gerado,
+        finalizado,
+        responsavel_id,
+        codigo,
+        criancas(nome, foto),
+        salas(nome_sala),
+        responsaveis(nome, parentesco, foto)
+      `)
+      .eq('codigo', checkoutCodigo.value)
+      .eq('finalizado', false)
+      .gte('data_checkin', `${dataHoje}T00:00:00`)
+      .lte('data_checkin', `${dataHoje}T23:59:59`);
+    
+    if (error) throw error;
+    
+    if (!data || data.length === 0) {
+      showErrorAlert('Nenhum check-in encontrado com este código para hoje');
+      isLoading.value = false;
+      return;
+    }
+    
+    // Preparar os dados do checkin selecionado
+    const checkin = data[0];
+    
+    // Log para verificar a estrutura exata dos dados
+    console.log('Dados do checkin:', JSON.stringify(checkin, null, 2));
+    
+    // Verificar se temos os dados do responsável
+    let qrData;
+    try {
+      // Tentar fazer parse do JSON do QR code
+      qrData = JSON.parse(checkin.qr_gerado);
+    } catch (e) {
+      console.error('Erro ao fazer parse do QR code:', e);
+      qrData = null;
+    }
+    
+    // Extrair corretamente os dados das fotos
+    // No Supabase, quando usamos seleção aninhada, os dados vem em um array
+    console.log('Dados da criança:', checkin.criancas);
+    console.log('Dados do responsável:', checkin.responsaveis);
+    
+    const crianca = checkin.criancas || {};
+    const responsavel = checkin.responsaveis || {};
+    
+    console.log('Crianca processada:', crianca);
+    console.log('Responsavel processado:', responsavel);
+    
+    // Buscar diretamente as fotos da criança e do responsável
+    let fotoCrianca = '';
+    let fotoResponsavel = '';
+    
+    try {
+      // Buscar foto da criança
+      const { data: criancaData, error: criancaError } = await supabase
+        .from('criancas')
+        .select('foto, webViewLink')
+        .eq('id', checkin.crianca_id)
+        .single();
+      
+      console.log('Busca direta da foto da criança:', { data: criancaData, error: criancaError });
+      
+      if (criancaData) {
+        // Tentar usar webViewLink se existir, caso contrário usar foto
+        fotoCrianca = criancaData.webViewLink || criancaData.foto || '';
+        console.log('URL da foto da criança:', fotoCrianca);
+        
+        // Corrigir URL do Google Drive
+        if (fotoCrianca && fotoCrianca.includes('drive.google.com')) {
+          // Extrair o ID do arquivo do Google Drive
+          let fileId = '';
+          
+          if (fotoCrianca.includes('/d/')) {
+            // Formato: https://drive.google.com/file/d/FILE_ID/view
+            const match = fotoCrianca.match(/\/d\/([^\/]+)/);
+            if (match && match[1]) {
+              fileId = match[1];
+            }
+          } else if (fotoCrianca.includes('id=')) {
+            // Formato: https://drive.google.com/open?id=FILE_ID
+            const match = fotoCrianca.match(/id=([^&]+)/);
+            if (match && match[1]) {
+              fileId = match[1];
+            }
+          }
+          
+          if (fileId) {
+            // Usar o link direto de visualização do Google Drive
+            fotoCrianca = `https://drive.google.com/uc?export=view&id=${fileId}`;
+            console.log('URL da foto da criança corrigida para link direto:', fotoCrianca);
+          }
+        }
+      }
+      
+      // Buscar foto do responsável
+      const { data: responsavelData, error: responsavelError } = await supabase
+        .from('responsaveis')
+        .select('foto, webViewLink')
+        .eq('id', checkin.responsavel_id)
+        .single();
+      
+      console.log('Busca direta da foto do responsável:', { data: responsavelData, error: responsavelError });
+      
+      if (responsavelData) {
+        // Tentar usar webViewLink se existir, caso contrário usar foto
+        fotoResponsavel = responsavelData.webViewLink || responsavelData.foto || '';
+        console.log('URL da foto do responsável:', fotoResponsavel);
+        
+        // Corrigir URL do Google Drive
+        if (fotoResponsavel && fotoResponsavel.includes('drive.google.com')) {
+          // Extrair o ID do arquivo do Google Drive
+          let fileId = '';
+          
+          if (fotoResponsavel.includes('/d/')) {
+            // Formato: https://drive.google.com/file/d/FILE_ID/view
+            const match = fotoResponsavel.match(/\/d\/([^\/]+)/);
+            if (match && match[1]) {
+              fileId = match[1];
+            }
+          } else if (fotoResponsavel.includes('id=')) {
+            // Formato: https://drive.google.com/open?id=FILE_ID
+            const match = fotoResponsavel.match(/id=([^&]+)/);
+            if (match && match[1]) {
+              fileId = match[1];
+            }
+          }
+          
+          if (fileId) {
+            // Usar o link direto de visualização do Google Drive
+            fotoResponsavel = `https://drive.google.com/uc?export=view&id=${fileId}`;
+            console.log('URL da foto do responsável corrigida para link direto:', fotoResponsavel);
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Erro ao buscar fotos diretamente:', err);
+    }
+    
+    selectedCheckin.value = {
+      id: checkin.id,
+      nome: crianca.nome || 'Nome não disponível',
+      sala: checkin.salas?.nome_sala || 'Sala não disponível',
+      horario_checkin: checkin.data_checkin,
+      familia: responsavel.nome_familia || 'Família',
+      responsavel: qrData?.responsavel?.nome || responsavel.nome || 'Não informado',
+      parentesco: qrData?.responsavel?.parentesco || responsavel.parentesco,
+      qrCodeData: qrData || checkin.qr_gerado,
+      fotoCrianca: fotoCrianca || crianca.foto || '',
+      fotoResponsavel: fotoResponsavel || responsavel.foto || ''
+    };
+    
+    console.log('Dados finais do selectedCheckin:', selectedCheckin.value);
+    
+    // Fechar o modal de opções e abrir o modal de confirmação de checkout
+    showCheckoutOptionsModal.value = false;
+    showCheckoutModal.value = true;
+    
+  } catch (error) {
+    console.error('Erro ao buscar check-in por código:', error);
+    showErrorAlert('Erro ao buscar check-in. Tente novamente.');
+  } finally {
+    isLoading.value = false;
+  }
 };
 
 const realizarCheckout = (checkinId: string) => {
@@ -1954,6 +2241,37 @@ const handleQRCodeSuccess = async (data: any) => {
       return;
     }
     
+    // Buscar as fotos da criança e do responsável no banco de dados
+    let fotoCrianca = '';
+    let fotoResponsavel = '';
+    
+    try {
+      // Buscar foto da criança
+      const { data: criancaData } = await supabase
+        .from('criancas')
+        .select('foto')
+        .eq('id', data.crianca.id)
+        .single();
+      
+      if (criancaData && criancaData.foto) {
+        fotoCrianca = criancaData.foto;
+      }
+      
+      // Buscar foto do responsável
+      const { data: responsavelData } = await supabase
+        .from('responsaveis')
+        .select('foto')
+        .eq('id', data.responsavel.id)
+        .single();
+      
+      if (responsavelData && responsavelData.foto) {
+        fotoResponsavel = responsavelData.foto;
+      }
+    } catch (err) {
+      console.error('Erro ao buscar fotos:', err);
+      // Não falhar o processo se não conseguir buscar as fotos
+    }
+    
     // Exibir modal de confirmação com os dados
     selectedCheckin.value = {
       id: checkin.id,
@@ -1963,7 +2281,9 @@ const handleQRCodeSuccess = async (data: any) => {
       familia: data.familia_id ? 'Família vinculada' : 'Sem família',
       responsavel: data.responsavel.nome,
       parentesco: data.responsavel.parentesco,
-      qrCodeData: data // Armazenar os dados completos do QR Code para uso posterior
+      qrCodeData: data, // Armazenar os dados completos do QR Code para uso posterior
+      fotoCrianca: fotoCrianca,
+      fotoResponsavel: fotoResponsavel
     };
     
     isLoading.value = false;
@@ -1983,6 +2303,53 @@ const handleQRCodeError = (error: string) => {
 const closeCheckoutModal = () => {
   showCheckoutModal.value = false;
   selectedCheckin.value = null;
+};
+
+const openPhotoWebView = (photoSrc: string, title: string) => {
+  // Modificar a URL para melhorar a compatibilidade com iframe
+  let modifiedSrc = photoSrc;
+  
+  // Processar URLs do Google Drive
+  if (photoSrc && photoSrc.includes('drive.google.com')) {
+    // Extrair o ID do arquivo do Google Drive
+    let fileId = '';
+    
+    if (photoSrc.includes('/d/')) {
+      // Formato: https://drive.google.com/file/d/FILE_ID/view
+      const match = photoSrc.match(/\/d\/([^\/]+)/);
+      if (match && match[1]) {
+        fileId = match[1];
+      }
+    } else if (photoSrc.includes('id=')) {
+      // Formato: https://drive.google.com/open?id=FILE_ID
+      const match = photoSrc.match(/id=([^&]+)/);
+      if (match && match[1]) {
+        fileId = match[1];
+      }
+    }
+    
+    if (fileId) {
+      // Usar o link de preview do Google Drive
+      modifiedSrc = `https://drive.google.com/file/d/${fileId}/preview`;
+      console.log('URL modificada para preview:', modifiedSrc);
+    }
+  }
+  
+  // Definir a URL e abrir o modal
+  photoWebViewSrc.value = modifiedSrc;
+  photoWebViewTitle.value = title;
+  showPhotoWebViewModal.value = true;
+};
+
+const openInNewTab = (url: string) => {
+  window.open(url, '_blank');
+  showSuccessAlert('Abrindo em nova aba');
+};
+
+const closePhotoWebView = () => {
+  showPhotoWebViewModal.value = false;
+  photoWebViewSrc.value = '';
+  photoWebViewTitle.value = '';
 };
 
 const showQRCodeModal = ref(false);
@@ -2776,6 +3143,70 @@ form {
   font-size: 24px;
 }
 
+.checkout-options {
+  padding: 1.5rem;
+}
+
+.option-section {
+  margin-bottom: 1.5rem;
+}
+
+.option-section h3 {
+  margin-bottom: 1rem;
+  font-size: 1.1rem;
+  color: #333;
+}
+
+.option-card {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #e9ecef;
+}
+
+.option-card:hover {
+  background-color: #e9ecef;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.option-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  background-color: #4361ee;
+  color: white;
+  border-radius: 50%;
+  margin-right: 1rem;
+}
+
+.option-label {
+  font-weight: 500;
+  font-size: 1rem;
+}
+
+.codigo-form {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e9ecef;
+}
+
+.codigo-input-group {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.codigo-input-group .form-control {
+  flex: 1;
+}
+
 .form-group {
   margin-bottom: 16px;
 }
@@ -3079,5 +3510,65 @@ textarea.form-control {
 .checkout-section p {
   margin: 5px 0;
   font-size: 14px;
+}
+
+.view-photo-container {
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.view-photo-btn {
+  background-color: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.view-photo-btn:hover {
+  background-color: #3a56d4;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.view-photo-btn i {
+  font-size: 16px;
+}
+
+.webview-modal {
+  max-width: 90%;
+  width: 800px;
+  height: 80vh;
+  background: white;
+}
+
+.webview-container {
+  width: 100%;
+  height: calc(100% - 120px);
+  overflow: hidden;
+}
+
+.webview-fallback {
+  padding: 10px;
+  text-align: center;
+  background-color: #f8f9fa;
+  border-top: 1px solid #e9ecef;
+}
+
+.webview-fallback p {
+  margin-bottom: 10px;
+  font-size: 14px;
+  color: #666;
+}
+
+.photo-webview {
+  width: 100%;
+  height: 100%;
+  border: none;
 }
 </style> 

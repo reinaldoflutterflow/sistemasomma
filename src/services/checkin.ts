@@ -1,5 +1,72 @@
 import { supabase } from "../supabase"
 
+/**
+ * Gera um código aleatório de 7 dígitos (4 letras e 3 números)
+ * e verifica se já existe na tabela de checkins
+ */
+async function gerarCodigoUnico(): Promise<string> {
+  // Função para gerar um código aleatório
+  const gerarCodigo = () => {
+    // Caracteres para as letras (apenas maiúsculas para facilitar a leitura)
+    const letras = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // Removido I e O para evitar confusão com 1 e 0
+    // Caracteres para os números
+    const numeros = '0123456789';
+    
+    // Gerar 4 letras aleatórias
+    let codigo = '';
+    for (let i = 0; i < 4; i++) {
+      codigo += letras.charAt(Math.floor(Math.random() * letras.length));
+    }
+    
+    // Gerar 3 números aleatórios
+    for (let i = 0; i < 3; i++) {
+      codigo += numeros.charAt(Math.floor(Math.random() * numeros.length));
+    }
+    
+    return codigo;
+  };
+  
+  // Gerar um código inicial
+  let codigo = gerarCodigo();
+  let codigoUnico = false;
+  let tentativas = 0;
+  const maxTentativas = 10; // Limite de tentativas para evitar loop infinito
+  
+  // Verificar se o código já existe na tabela de checkins
+  while (!codigoUnico && tentativas < maxTentativas) {
+    const { data, error } = await supabase
+      .from('checkins')
+      .select('id')
+      .eq('codigo', codigo)
+      .limit(1);
+    
+    if (error) {
+      console.error('Erro ao verificar código:', error);
+      // Em caso de erro, gerar um novo código e continuar
+      codigo = gerarCodigo();
+      tentativas++;
+      continue;
+    }
+    
+    // Se não encontrou nenhum registro com esse código, então é único
+    if (!data || data.length === 0) {
+      codigoUnico = true;
+    } else {
+      // Se encontrou, gerar um novo código e tentar novamente
+      codigo = gerarCodigo();
+      tentativas++;
+    }
+  }
+  
+  // Se excedeu o número máximo de tentativas, usar timestamp como fallback
+  if (!codigoUnico) {
+    const timestamp = Date.now().toString().slice(-7);
+    codigo = timestamp;
+  }
+  
+  return codigo;
+}
+
 export interface Responsavel {
   id: string
   familia_id: string
@@ -177,12 +244,16 @@ export async function realizarCheckin(sala_id: string, crianca_id: string, respo
     // Gerar QR code com os dados completos
     const qr_gerado = JSON.stringify(dadosQR);
     
+    // Gerar código único de 7 dígitos (4 letras e 3 números)
+    const codigo = await gerarCodigoUnico();
+    
     console.log('Realizando check-in com os dados:', { 
       sala_id, 
       crianca_id, 
       responsavel_id, 
       responsavel_checkin: criancaData.familia_id,
-      qr_gerado 
+      qr_gerado,
+      codigo
     });
     
     const { error } = await supabase
@@ -194,7 +265,8 @@ export async function realizarCheckin(sala_id: string, crianca_id: string, respo
           responsavel_id,
           responsavel_checkin: criancaData.familia_id, // UUID da família
           data_checkin: new Date().toISOString(),
-          qr_gerado
+          qr_gerado,
+          codigo // Código único de 7 dígitos (4 letras e 3 números)
         }
       ])
 
@@ -241,7 +313,8 @@ export async function realizarCheckin(sala_id: string, crianca_id: string, respo
           sala: salaData.nome_sala,
           professora: salaData.professor || 'Não informado',
           familia_id: criancaData.familia_id,
-          telefone: telefone
+          telefone: telefone,
+          checkout_codigo: codigo // Código único para checkout
         })
       });
       console.log('Notificação de check-in enviada com sucesso');
