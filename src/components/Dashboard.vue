@@ -46,11 +46,6 @@
       </div>
 
       <div class="user-section">
-        <div class="user-info">
-          <i class="fas fa-user-circle"></i>
-          <span class="user-name">Usuário</span>
-          <span class="user-role">Admin</span>
-        </div>
         <button @click="handleLogout" class="logout-button">
           <i class="fas fa-sign-out-alt"></i>
           <span>Sair</span>
@@ -184,14 +179,17 @@
                   <div class="details">
                     <span><i class="fas fa-door-open"></i> {{ checkin.sala }}</span>
                     <span><i class="fas fa-clock"></i> {{ formatarData(checkin.horario_checkin) }}</span>
-                    <span><i class="fas fa-user"></i> {{ checkin.responsavel }}</span>
+                    <span><i class="fas fa-user"></i> {{ checkin.familia }}</span>
                   </div>
                   <div class="qr-info">
-                    <span><i class="fas fa-qrcode"></i> {{ checkin.qr_code.substring(0, 8) }}...</span>
+                    <span class="qr-badge">
+                      <i class="fas fa-qrcode"></i>
+                      <span class="faixa-etaria">{{ checkin.faixa_etaria_inicio }}-{{ checkin.faixa_etaria_fim }} anos</span>
+                    </span>
                   </div>
                 </div>
                 <div class="actions">
-                  <button class="btn-outline" @click="handleCheckout(checkin.id)">Check-out</button>
+                  <button class="btn-outline" @click="handleCheckout">Check-out</button>
                   <button class="btn-icon" @click="viewQRCode(checkin.qr_code)">
                     <i class="fas fa-eye"></i>
                   </button>
@@ -286,6 +284,16 @@
                 </option>
               </select>
             </div>
+            
+            <div class="form-group">
+              <label>Responsável</label>
+              <select v-model="checkInForm.responsavel_id" required>
+                <option value="">Selecione um responsável</option>
+                <option v-for="responsavel in responsaveis" :key="responsavel.id" :value="responsavel.id">
+                  {{ responsavel.nome }} ({{ responsavel.parentesco }})
+                </option>
+              </select>
+            </div>
 
             <div v-if="error" class="alert alert-error">
               {{ error }}
@@ -295,6 +303,268 @@
               <button type="button" class="btn-secondary" @click="closeModal">Cancelar</button>
               <button type="submit" class="btn-primary" :disabled="isLoading">
                 {{ isLoading ? 'Realizando check-in...' : 'Confirmar Check-in' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal de Check-out -->
+      <div v-if="showCheckoutModal" class="modal-overlay">
+        <div class="modal checkout-modal">
+          <div class="modal-header">
+            <h2>Confirmar Check-out</h2>
+            <button class="modal-close" @click="closeCheckoutModal">&times;</button>
+          </div>
+          <div class="checkout-info" v-if="selectedCheckin">
+            <div class="checkout-section">
+              <h3>Informações da Criança</h3>
+              <p><strong>Nome:</strong> {{ selectedCheckin.nome }}</p>
+            </div>
+            <div class="checkout-section">
+              <h3>Informações da Sala</h3>
+              <p><strong>Sala:</strong> {{ selectedCheckin.sala }}</p>
+              <p><strong>Horário de Check-in:</strong> {{ formatarData(selectedCheckin.horario_checkin) }}</p>
+            </div>
+            <div class="checkout-section">
+              <h3>Informações do Responsável</h3>
+              <p><strong>Família:</strong> {{ selectedCheckin.familia }}</p>
+              <p><strong>Responsável:</strong> {{ selectedCheckin.responsavel }} <span v-if="selectedCheckin.parentesco">({{ selectedCheckin.parentesco }})</span></p>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" @click="closeCheckoutModal">Cancelar</button>
+            <button type="button" class="btn-primary" @click="realizarCheckout(selectedCheckin.id)" :disabled="isLoading">
+              {{ isLoading ? 'Processando...' : 'Confirmar Check-out' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal de QR Code -->
+      <div v-if="showQRCodeModal" class="modal-overlay">
+        <div class="modal qr-modal">
+          <div class="modal-header">
+            <h2>QR Code</h2>
+            <button class="modal-close" @click="showQRCodeModal = false">&times;</button>
+          </div>
+          <div class="qr-code-container">
+            <img :src="currentQRCode" alt="QR Code" class="qr-code-image" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal do Scanner de QR Code -->
+      <div v-if="showQRScannerModal" class="modal-overlay">
+        <div class="modal scanner-modal">
+          <QrCodeScanner 
+            @close="showQRScannerModal = false" 
+            :onSuccess="handleQRCodeSuccess" 
+            :onError="handleQRCodeError"
+          />
+        </div>
+      </div>
+
+      <!-- Modal de Cadastro de Responsável -->
+      <div v-if="showResponsavelModal" class="modal-overlay">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>Cadastrar Responsável</h2>
+            <button class="modal-close" @click="closeResponsavelModal">&times;</button>
+          </div>
+          
+          <form @submit.prevent="handleResponsavelSubmit">
+            <div class="form-group">
+              <label>Família</label>
+              <div class="search-select-container">
+                <input 
+                  type="text" 
+                  v-model="responsavelForm.searchFamilia" 
+                  @input="filterFamilias"
+                  @focus="showFamiliaDropdown = true"
+                  placeholder="Pesquisar família..."
+                  class="form-control"
+                  required
+                />
+                <div v-if="showFamiliaDropdown && filteredFamilias.length > 0" class="search-select-dropdown">
+                  <div 
+                    v-for="familia in filteredFamilias" 
+                    :key="familia.id"
+                    class="search-select-item"
+                    @click="selectFamilia(familia)"
+                  >
+                    {{ familia.nome_familia }}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Nome do Responsável</label>
+              <input 
+                type="text" 
+                v-model="responsavelForm.nome" 
+                required
+                placeholder="Ex: João Silva"
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Telefone</label>
+              <input 
+                type="text" 
+                v-model="responsavelForm.telefone" 
+                required
+                placeholder="Ex: (11) 99999-9999"
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Parentesco</label>
+              <select 
+                v-model="responsavelForm.parentesco" 
+                required
+                class="form-control"
+              >
+                <option value="" disabled selected>Selecione o parentesco</option>
+                <option value="Pai">Pai</option>
+                <option value="Mãe">Mãe</option>
+                <option value="Tio">Tio</option>
+                <option value="Avô">Avô</option>
+                <option value="Outro">Outro</option>
+              </select>
+            </div>
+            
+            <div class="form-group" v-if="responsavelForm.parentesco === 'Outro'">
+              <label>Especifique o parentesco</label>
+              <input 
+                type="text" 
+                v-model="responsavelForm.outroParentesco" 
+                required
+                placeholder="Ex: Padrinho, Madrinha, etc."
+                class="form-control"
+              />
+              <small class="form-text text-muted">Esta informação será salva nas observações do responsável</small>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="responsavelForm.whatsapp" />
+                Possui WhatsApp
+              </label>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="responsavelForm.pode_fazer_checkout" />
+                Pode realizar check-out
+              </label>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="btn-secondary" @click="closeResponsavelModal">Cancelar</button>
+              <button type="submit" class="btn-primary" :disabled="isLoading">
+                {{ isLoading ? 'Cadastrando...' : 'Cadastrar Responsável' }}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Modal de Cadastro de Família -->
+      <div v-if="showFamiliaModal" class="modal-overlay">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>Cadastrar Família</h2>
+            <button class="modal-close" @click="closeFamiliaModal">&times;</button>
+          </div>
+          
+          <form @submit.prevent="handleFamiliaSubmit">
+            <div class="form-group">
+              <label>Nome da Família</label>
+              <input 
+                type="text" 
+                v-model="familiaForm.nome_familia" 
+                required
+                placeholder="Ex: Família Silva"
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Telefone</label>
+              <input 
+                type="text" 
+                v-model="familiaForm.telefone" 
+                required
+                placeholder="Ex: (11) 99999-9999"
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-group">
+              <label>Email</label>
+              <input 
+                type="email" 
+                v-model="familiaForm.email" 
+                placeholder="Ex: familia@email.com"
+                class="form-control"
+              />
+            </div>
+            
+            <div class="form-row">
+              <div class="form-group">
+                <label>Cidade</label>
+                <input 
+                  type="text" 
+                  v-model="familiaForm.cidade" 
+                  placeholder="Ex: Araruama"
+                  class="form-control"
+                />
+              </div>
+              
+              <div class="form-group">
+                <label>Estado</label>
+                <input 
+                  type="text" 
+                  v-model="familiaForm.estado" 
+                  placeholder="Ex: RJ"
+                  class="form-control"
+                />
+              </div>
+            </div>
+            
+            <div class="form-group">
+              <label>Endereço</label>
+              <textarea 
+                v-model="familiaForm.endereco" 
+                placeholder="Endereço completo"
+                class="form-control"
+              ></textarea>
+            </div>
+            
+            <div class="form-group">
+              <label>Observações</label>
+              <textarea 
+                v-model="familiaForm.observacoes" 
+                placeholder="Observações sobre a família"
+                class="form-control"
+              ></textarea>
+            </div>
+            
+            <div class="form-group checkbox-group">
+              <label class="checkbox-label">
+                <input type="checkbox" v-model="familiaForm.visitante" />
+                Visitante
+              </label>
+            </div>
+            
+            <div class="form-actions">
+              <button type="button" class="btn-secondary" @click="closeFamiliaModal">Cancelar</button>
+              <button type="submit" class="btn-primary" :disabled="isLoading">
+                {{ isLoading ? 'Cadastrando...' : 'Cadastrar Família' }}
               </button>
             </div>
           </form>
@@ -410,13 +680,13 @@
           </div>
           <span class="acao-label">Novo Check-in</span>
         </div>
-        <div class="acao-card">
+        <div class="acao-card" @click="handleCheckout">
           <div class="acao-icon">
             <i class="fas fa-sign-out-alt"></i>
           </div>
           <span class="acao-label">Novo Check-out</span>
         </div>
-        <div class="acao-card">
+        <div class="acao-card" @click="showFamiliaModal = true">
           <div class="acao-icon">
             <i class="fas fa-users"></i>
           </div>
@@ -440,6 +710,12 @@
           </div>
           <span class="acao-label">Imprimir Etiquetas</span>
         </div>
+        <div class="acao-card" @click="showResponsavelModal = true">
+          <div class="acao-icon">
+            <i class="fas fa-user-plus"></i>
+          </div>
+          <span class="acao-label">Cadastrar Responsável</span>
+        </div>
       </div>
     </div>
     </main>
@@ -450,14 +726,16 @@
 import { ref, onMounted, reactive, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { logout } from '../services/auth';
-import { getDashboardData, getActiveCheckins } from '../services/dashboard';
+import { getDashboardData, getActiveCheckins, finalizarCheckin } from '../services/dashboard';
 import type { DashboardData, CriancaPresente } from '../services/dashboard';
 import LineChart from './LineChart.vue';
 import { supabase } from '../supabase';
 import * as QRCode from 'qrcode';
-import { getFamilias, getSalas, getCriancasPorFamilia, realizarCheckin } from '../services/checkin';
-import type { Familia, Sala, Crianca } from '../services/checkin';
+import { cadastrarResponsavel } from '../services/responsaveis';
+import { getFamilias, getSalas, getCriancasPorFamilia, realizarCheckin, getResponsaveisPorFamilia } from '../services/checkin';
+import type { Familia, Sala, Crianca, Responsavel } from '../services/checkin';
 import SearchableSelect from './SearchableSelect.vue';
+import QrCodeScanner from './QrCodeScanner.vue';
 
 const router = useRouter();
 const selectedPeriod = ref(30);
@@ -569,8 +847,12 @@ const salas = ref<Sala[]>([]);
 const checkInForm = ref({
   familia_id: '',
   crianca_id: '',
-  sala_id: ''
+  sala_id: '',
+  responsavel_id: ''
 });
+
+const responsaveis = ref<Responsavel[]>([]);
+const error = ref('');
 
 const criancasFiltradas = computed(() => {
   if (!checkInForm.value.familia_id) return [];
@@ -612,7 +894,7 @@ const familiasOptions = computed(() => {
 });
 
 const isFormValid = computed(() => {
-  return checkInForm.value.familia_id && checkInForm.value.crianca_id && checkInForm.value.sala_id;
+  return checkInForm.value.familia_id && checkInForm.value.crianca_id && checkInForm.value.sala_id && checkInForm.value.responsavel_id;
 });
 
 const loadOptions = async () => {
@@ -741,8 +1023,8 @@ const showErrorAlert = (message: string) => {
 };
 
 const handleCheckin = async () => {
-  if (!checkInForm.value.sala_id || !checkInForm.value.crianca_id) {
-    error.value = 'Por favor, preencha todos os campos';
+  if (!checkInForm.value.sala_id || !checkInForm.value.crianca_id || !checkInForm.value.responsavel_id) {
+    showErrorAlert('Por favor, preencha todos os campos');
     return;
   }
 
@@ -750,21 +1032,25 @@ const handleCheckin = async () => {
   error.value = '';
 
   try {
-    const result = await realizarCheckin(checkInForm.value.sala_id, checkInForm.value.crianca_id);
+    const result = await realizarCheckin(checkInForm.value.sala_id, checkInForm.value.crianca_id, checkInForm.value.responsavel_id);
     if (result.success) {
       showCheckinModal.value = false;
       checkInForm.value = {
         sala_id: '',
         familia_id: '',
-        crianca_id: ''
+        crianca_id: '',
+        responsavel_id: ''
       };
-      await loadCheckinsAtivos();
+      await loadCriancasPresentes();
+      showSuccessAlert('Check-in realizado com sucesso!');
     } else {
       error.value = 'Erro ao realizar check-in';
+      showErrorAlert('Erro ao realizar check-in');
     }
-  } catch (error) {
-    console.error('Erro ao realizar check-in:', error);
+  } catch (err) {
+    console.error('Erro ao realizar check-in:', err);
     error.value = 'Erro ao realizar check-in';
+    showErrorAlert('Erro ao realizar check-in');
   } finally {
     isLoading.value = false;
   }
@@ -775,7 +1061,8 @@ const closeModal = () => {
   checkInForm.value = {
     familia_id: '',
     crianca_id: '',
-    sala_id: ''
+    sala_id: '',
+    responsavel_id: ''
   };
   error.value = '';
 };
@@ -790,6 +1077,37 @@ const salaForm = reactive<SalaForm>({
   capacidade: 0,
   professor: ''
 });
+
+const showFamiliaModal = ref(false);
+const familiaForm = reactive({
+  nome_familia: '',
+  telefone: '',
+  email: '',
+  endereco: '',
+  estado: 'RJ',
+  cidade: 'Araruama',
+  observacoes: '',
+  visitante: false
+});
+
+const showResponsavelModal = ref(false);
+const showFamiliaDropdown = ref(false);
+const responsavelForm = reactive({
+  familia_id: '',
+  nome: '',
+  telefone: '',
+  parentesco: '',
+  outroParentesco: '',
+  whatsapp: true,
+  pode_fazer_checkout: false,
+  searchFamilia: '',
+  selectedFamilia: null,
+  observacoes: ''
+});
+
+const allFamilias = ref([]);
+const filteredFamilias = ref([]);
+const isLoading = ref(false);
 
 const handleSalaSubmit = async () => {
   try {
@@ -822,6 +1140,168 @@ const closeSalaModal = () => {
   salaForm.professor = '';
 };
 
+const handleFamiliaSubmit = async () => {
+  try {
+    isLoading.value = true;
+    
+    const { data, error } = await supabase
+      .from('familias')
+      .insert({
+        nome_familia: familiaForm.nome_familia,
+        telefone: familiaForm.telefone,
+        email: familiaForm.email || null,
+        endereco: familiaForm.endereco || null,
+        estado: familiaForm.estado || null,
+        cidade: familiaForm.cidade || null,
+        observacoes: familiaForm.observacoes || null,
+        visitante: familiaForm.visitante || false,
+        status: true
+      });
+
+    if (error) throw error;
+
+    showSuccessAlert('Família cadastrada com sucesso!');
+    closeFamiliaModal();
+    await loadOptions(); // Recarrega as famílias
+  } catch (error) {
+    console.error('Erro ao cadastrar família:', error);
+    showErrorAlert('Erro ao cadastrar família');
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+const closeFamiliaModal = () => {
+  showFamiliaModal.value = false;
+  familiaForm.nome_familia = '';
+  familiaForm.telefone = '';
+  familiaForm.email = '';
+  familiaForm.endereco = '';
+  familiaForm.estado = 'RJ';
+  familiaForm.cidade = 'Araruama';
+  familiaForm.observacoes = '';
+  familiaForm.visitante = false;
+};
+
+const closeResponsavelModal = () => {
+  showResponsavelModal.value = false;
+  responsavelForm.familia_id = '';
+  responsavelForm.nome = '';
+  responsavelForm.telefone = '';
+  responsavelForm.parentesco = '';
+  responsavelForm.outroParentesco = '';
+  responsavelForm.whatsapp = true;
+  responsavelForm.pode_fazer_checkout = false;
+  responsavelForm.searchFamilia = '';
+  responsavelForm.selectedFamilia = null;
+  responsavelForm.observacoes = '';
+  showFamiliaDropdown.value = false;
+};
+
+const filterFamilias = () => {
+  if (!responsavelForm.searchFamilia) {
+    filteredFamilias.value = allFamilias.value;
+    return;
+  }
+  
+  const search = responsavelForm.searchFamilia.toLowerCase();
+  filteredFamilias.value = allFamilias.value.filter(familia => 
+    familia.nome_familia.toLowerCase().includes(search)
+  );
+};
+
+const selectFamilia = (familia) => {
+  responsavelForm.familia_id = familia.id;
+  responsavelForm.searchFamilia = familia.nome_familia;
+  responsavelForm.selectedFamilia = familia;
+  showFamiliaDropdown.value = false;
+};
+
+
+
+const loadFamilias = async () => {
+  try {
+    const { data, error } = await supabase
+      .from('familias')
+      .select('id, nome_familia')
+      .eq('status', true)
+      .order('nome_familia');
+      
+    if (error) throw error;
+    
+    allFamilias.value = data || [];
+    filteredFamilias.value = data || [];
+  } catch (error) {
+    console.error('Erro ao carregar famílias:', error);
+    showErrorAlert('Erro ao carregar lista de famílias');
+  }
+};
+
+const handleResponsavelSubmit = async () => {
+  try {
+    if (!responsavelForm.familia_id) {
+      showErrorAlert('Por favor, selecione uma família');
+      return;
+    }
+    
+    // Validar se foi especificado o outro parentesco quando selecionado "Outro"
+    if (responsavelForm.parentesco === 'Outro' && !responsavelForm.outroParentesco) {
+      showErrorAlert('Por favor, especifique o parentesco');
+      return;
+    }
+    
+    isLoading.value = true;
+    console.log('Iniciando cadastro de responsável');
+    
+    // Preparar observações se for "Outro" parentesco
+    let observacoes = responsavelForm.observacoes || '';
+    if (responsavelForm.parentesco === 'Outro' && responsavelForm.outroParentesco) {
+      observacoes = `Parentesco específico: ${responsavelForm.outroParentesco}` + 
+        (observacoes ? '\n' + observacoes : '');
+    }
+    
+    // Dados para inserir - versão simplificada
+    const dadosResponsavel = {
+      familia_id: responsavelForm.familia_id,
+      nome: responsavelForm.nome,
+      telefone: responsavelForm.telefone,
+      parentesco: responsavelForm.parentesco,
+      whatsapp: responsavelForm.whatsapp || false,
+      pode_fazer_checkout: responsavelForm.pode_fazer_checkout || false
+    };
+    
+    // Adicionar observações apenas se existirem
+    if (observacoes) {
+      dadosResponsavel.observacoes = observacoes;
+    }
+    
+    console.log('Dados para inserir:', JSON.stringify(dadosResponsavel));
+    
+    // Tentar inserir no formato de array (padrão do Supabase)
+    console.log('Tentando inserir com formato de array...');
+    const { data, error } = await supabase
+      .from('responsaveis')
+      .insert([dadosResponsavel]);
+    
+    console.log('Resposta do Supabase:', JSON.stringify({ data, error }));
+    
+    if (error) {
+      console.error('Erro detalhado:', JSON.stringify(error));
+      throw error;
+    }
+
+    showSuccessAlert('Responsável cadastrado com sucesso!');
+    closeResponsavelModal();
+    await loadFamilias(); // Recarrega as famílias
+  } catch (error) {
+    console.error('Erro ao cadastrar responsável:', error);
+    showErrorAlert('Erro ao cadastrar responsável');
+  } finally {
+    isLoading.value = false;
+  }
+
+};
+
 const openCheckInModal = (salaId: string) => {
   // Limpa o formulário antes de abrir
   checkInForm.value.familia_id = '';
@@ -834,27 +1314,38 @@ const openCheckInModal = (salaId: string) => {
 
 const handleFamiliaChange = async () => {
   checkInForm.value.crianca_id = '';
+  checkInForm.value.responsavel_id = '';
   
   if (checkInForm.value.familia_id) {
     try {
       // Buscar todas as crianças da família
-      const { data, error } = await supabase
+      const { data: criancasData, error: criancasError } = await supabase
         .from('criancas')
         .select('*')
         .eq('familia_id', checkInForm.value.familia_id);
       
-      if (error) throw error;
+      if (criancasError) throw criancasError;
+      criancas.value = criancasData || [];
+      console.log('Crianças da família carregadas:', criancasData);
       
-      // Atualizar a lista de crianças
-      criancas.value = data || [];
-      console.log('Crianças da família carregadas:', data);
+      // Buscar todos os responsáveis da família
+      const { data: responsaveisData, error: responsaveisError } = await supabase
+        .from('responsaveis')
+        .select('*')
+        .eq('familia_id', checkInForm.value.familia_id)
+        .order('nome');
+      
+      if (responsaveisError) throw responsaveisError;
+      responsaveis.value = responsaveisData || [];
+      console.log('Responsáveis carregados:', responsaveisData);
       
       // O computed criancasFiltradas já vai filtrar por faixa etária se uma sala estiver selecionada
     } catch (error) {
-      console.error('Erro ao carregar crianças:', error);
+      console.error('Erro ao carregar dados da família:', error);
     }
   } else {
     criancas.value = [];
+    responsaveis.value = [];
   }
 };
 
@@ -873,25 +1364,159 @@ const formatarData = (data: string) => {
 
 const refreshCheckins = async () => {
   try {
-    criancasPresentes.value = await getCriancasPresentes();
+    console.log('Atualizando lista de check-ins ativos...');
+    const checkinsAtivos = await getActiveCheckins();
+    console.log('Check-ins ativos recebidos:', checkinsAtivos);
+    criancasPresentes.value = checkinsAtivos;
   } catch (error) {
     console.error('Erro ao atualizar check-ins:', error);
+    console.error('Detalhes do erro:', JSON.stringify(error));
   }
 };
 
-const handleCheckout = async (checkinId: string) => {
+const showCheckoutModal = ref(false);
+const selectedCheckin = ref<any>(null);
+
+const showQRScannerModal = ref(false);
+
+const handleCheckout = async () => {
+  // Abrir o scanner de QR Code
+  showQRScannerModal.value = true;
+};
+
+const realizarCheckout = (checkinId: string) => {
+  // Verificar se temos os dados do QR Code
+  if (!selectedCheckin.value || !selectedCheckin.value.qrCodeData) {
+    showErrorAlert('Dados do QR Code não disponíveis. Tente novamente.');
+    return;
+  }
+  
+  console.log('Realizando checkout para:', checkinId);
+  isLoading.value = true;
+  
+  // Preparar os dados para o checkout
+  const checkoutData = {
+    checkinId: checkinId,
+    responsavelId: selectedCheckin.value.qrCodeData.responsavel?.id,
+    qrLido: JSON.stringify(selectedCheckin.value.qrCodeData)
+  };
+  
+  // Executar o checkout usando a nova função
+  finalizarCheckin(checkoutData)
+    .then(success => {
+      isLoading.value = false;
+      
+      if (success) {
+        // Remover o item da lista de crianças presentes (interface)
+        criancasPresentes.value = criancasPresentes.value.filter(
+          checkin => checkin.id !== checkinId
+        );
+        
+        // Fechar o modal e mostrar mensagem de sucesso
+        showSuccessAlert('Check-out realizado com sucesso!');
+        showCheckoutModal.value = false;
+      } else {
+        showErrorAlert('Erro ao realizar check-out. Tente novamente.');
+      }
+    })
+    .catch(error => {
+      isLoading.value = false;
+      console.error('Erro ao finalizar check-in:', error);
+      showErrorAlert('Erro ao realizar check-out. Tente novamente.');
+    });
+};
+
+const handleQRCodeSuccess = async (data: any) => {
+  console.log('QR Code lido com sucesso:', data);
+  showQRScannerModal.value = false;
+  isLoading.value = true;
+  
   try {
-    // Implementar lógica de checkout
-    await refreshCheckins();
+    // Verificar se o QR Code contém os dados esperados
+    if (!data.crianca || !data.sala || !data.responsavel || !data.data_checkin) {
+      showErrorAlert('QR Code inválido. Formato incorreto.');
+      isLoading.value = false;
+      return;
+    }
+    
+    // Verificar se a data do check-in é a data atual
+    const dataCheckin = new Date(data.data_checkin);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const dataCheckinInicioDia = new Date(dataCheckin);
+    dataCheckinInicioDia.setHours(0, 0, 0, 0);
+    
+    if (dataCheckinInicioDia.getTime() !== hoje.getTime()) {
+      showErrorAlert('Check-in não é válido para hoje. Data vencida.');
+      isLoading.value = false;
+      return;
+    }
+    
+    // Buscar o check-in correspondente
+    const checkin = criancasPresentes.value.find(c => 
+      c.nome === data.crianca.nome && 
+      c.sala === data.sala.nome
+    );
+    
+    if (!checkin) {
+      showErrorAlert('Check-in não encontrado no sistema.');
+      isLoading.value = false;
+      return;
+    }
+    
+    // Verificar se o check-in já possui um checkout registrado
+    const checkoutExistente = await verificarCheckoutExistente(checkin.id);
+    if (checkoutExistente) {
+      showErrorAlert('Este check-in já possui um checkout registrado.');
+      isLoading.value = false;
+      return;
+    }
+    
+    // Exibir modal de confirmação com os dados
+    selectedCheckin.value = {
+      id: checkin.id,
+      nome: data.crianca.nome,
+      sala: data.sala.nome,
+      horario_checkin: data.data_checkin,
+      familia: data.familia_id ? 'Família vinculada' : 'Sem família',
+      responsavel: data.responsavel.nome,
+      parentesco: data.responsavel.parentesco,
+      qrCodeData: data // Armazenar os dados completos do QR Code para uso posterior
+    };
+    
+    isLoading.value = false;
+    showCheckoutModal.value = true;
   } catch (error) {
-    console.error('Erro ao fazer checkout:', error);
+    console.error('Erro ao processar QR Code:', error);
+    showErrorAlert('Erro ao processar QR Code. Tente novamente.');
+    isLoading.value = false;
   }
 };
+
+const handleQRCodeError = (error: string) => {
+  console.error('Erro na leitura do QR Code:', error);
+  showErrorAlert(`Erro na leitura do QR Code: ${error}`);
+};
+
+const closeCheckoutModal = () => {
+  showCheckoutModal.value = false;
+  selectedCheckin.value = null;
+};
+
+const showQRCodeModal = ref(false);
+const currentQRCode = ref('');
 
 const viewQRCode = (qrCode: string) => {
-  // Exibir o QR code em um modal ou popup
-  alert(`QR Code: ${qrCode}`);
-  // Aqui você pode implementar uma visualização melhor do QR code
+  // Gerar a imagem do QR Code usando a biblioteca QRCode
+  QRCode.toDataURL(qrCode, { errorCorrectionLevel: 'H' })
+    .then(url => {
+      currentQRCode.value = url;
+      showQRCodeModal.value = true;
+    })
+    .catch(err => {
+      console.error('Erro ao gerar QR Code:', err);
+      showErrorAlert('Erro ao gerar QR Code');
+    });
 };
 
 const loadActiveCheckins = async () => {
@@ -925,7 +1550,8 @@ onMounted(async () => {
     loadDashboardData(),
     loadActiveCheckins(),
     loadActiveSalas(),
-    loadOptions()
+    loadOptions(),
+    loadFamilias()
   ]);
 });
 </script>
@@ -961,6 +1587,8 @@ body {
   position: fixed;
   left: 0;
   top: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .logo {
@@ -1017,6 +1645,7 @@ body {
 .user-section {
   margin-top: auto;
   padding: 12px;
+  margin-bottom: 16px;
 }
 
 .user-info {
@@ -1464,7 +2093,7 @@ body {
   width: 40px;
   height: 40px;
   background: #f0f2ff;
-  color: #0000FF;
+  color: #2d01fe;
   border-radius: 8px;
   display: flex;
   align-items: center;
@@ -1503,14 +2132,41 @@ body {
   flex-wrap: wrap;
 }
 
+.details span i.fa-door-open,
+.details span i.fa-clock,
+.details span i.fa-user {
+  color: #2d01fe;
+}
+
 .qr-info {
   margin-top: 8px;
-  font-size: 13px;
-  color: #4b5563;
-  background: #f3f4f6;
-  padding: 4px 8px;
-  border-radius: 4px;
   display: inline-block;
+}
+
+.qr-badge {
+  display: inline-flex;
+  align-items: center;
+  background-color: #e8f4e8;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #28a745;
+  border: 1px solid #c3e6cb;
+}
+
+.qr-text {
+  margin: 0 5px;
+  color: #333;
+}
+
+.faixa-etaria {
+  background-color: transparent;
+  color: #28a745;
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 5px;
 }
 
 .actions {
@@ -1526,8 +2182,14 @@ body {
 }
 
 .teacher {
-  color: #666;
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  background-color: #e8f4e8;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #28a745;
+  border: 1px solid #c3e6cb;
   margin-top: 4px;
 }
 
@@ -1776,5 +2438,118 @@ input[type="time"]:focus {
 
 .logout-button i {
   font-size: 16px;
+}
+/* Estilos para o modal de QR Code */
+.qr-modal {
+  max-width: 400px;
+}
+
+.qr-code-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.qr-code-image {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Estilos para o formulário de família */
+.form-control {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #333;
+  background-color: #fff;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: #0000FF;
+  box-shadow: 0 0 0 2px rgba(0, 0, 255, 0.1);
+}
+
+textarea.form-control {
+  resize: vertical;
+  min-height: 80px;
+  font-family: inherit;
+}
+
+.checkbox-group {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-weight: normal;
+}
+
+.checkbox-label input {
+  margin-right: 8px;
+}
+
+/* Estilos para o dropdown pesquisável */
+.search-select-container {
+  position: relative;
+}
+
+.search-select-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  background-color: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  margin-top: 4px;
+}
+
+.search-select-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.search-select-item:hover {
+  background-color: #f3f4f6;
+}
+
+/* Estilos para o modal de Check-out */
+.checkout-modal {
+  max-width: 500px;
+}
+
+.checkout-info {
+  padding: 0 20px 20px 20px;
+}
+
+.checkout-section {
+  margin-bottom: 20px;
+  padding: 15px;
+  background-color: #f8f9ff;
+  border-radius: 8px;
+}
+
+.checkout-section h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: #0000FF;
+}
+
+.checkout-section p {
+  margin: 5px 0;
+  font-size: 14px;
 }
 </style> 

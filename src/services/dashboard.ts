@@ -44,14 +44,17 @@ export async function getDashboardData(): Promise<DashboardData> {
     
     if (salasError) throw salasError;
     
-    // Buscar check-ins de hoje
+    // Buscar check-ins de hoje da view checkin_checkout_status
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
     
     const { data: checkins, error: checkinsError } = await supabase
-      .from('checkins')
-      .select('id')
+      .from('checkin_checkout_status')
+      .select('checkin_id')
+      .eq('status', 'Presente')
       .gte('data_checkin', hoje.toISOString());
+    
+    console.log('Check-ins ativos da view:', checkins?.length || 0);
     
     if (checkinsError) throw checkinsError;
     
@@ -158,41 +161,214 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 }
 
+export interface CheckoutData {
+  checkinId: string;
+  responsavelId?: string;
+  qrLido: string;
+}
+
+/**
+ * Verifica se um check-in já possui registro na tabela de checkouts
+ * @param checkinId ID do check-in a ser verificado
+ * @returns true se já existe checkout, false caso contrário
+ */
+export async function verificarCheckoutExistente(checkinId: string): Promise<boolean> {
+  try {
+    const { data, error, count } = await supabase
+      .from('checkouts')
+      .select('id', { count: 'exact' })
+      .eq('checkin_id', checkinId);
+    
+    if (error) {
+      console.error('Erro ao verificar checkout existente:', error);
+      return false;
+    }
+    
+    return count !== null && count > 0;
+  } catch (error) {
+    console.error('Erro ao verificar checkout existente:', error);
+    return false;
+  }
+}
+
+export async function finalizarCheckin(data: CheckoutData): Promise<boolean> {
+  try {
+    console.log('Finalizando check-in ID:', data.checkinId);
+    
+    // 0. Verificar se já existe um checkout para este check-in
+    const checkoutExistente = await verificarCheckoutExistente(data.checkinId);
+    if (checkoutExistente) {
+      console.warn('Check-in já possui um checkout registrado');
+      return false;
+    }
+    
+    // 1. Atualizar o check-in para finalizado
+    const { error: updateError } = await supabase
+      .from('checkins')
+      .update({ finalizado: true })
+      .eq('id', data.checkinId);
+    
+    if (updateError) {
+      console.error('Erro ao finalizar check-in:', updateError);
+      return false;
+    }
+    
+    // 2. Criar um registro na tabela checkouts
+    const { error: insertError } = await supabase
+      .from('checkouts')
+      .insert([
+        { 
+          checkin_id: data.checkinId,
+          responsavel_checkout: data.responsavelId || null,
+          qr_lido: data.qrLido
+        }
+      ]);
+    
+    if (insertError) {
+      console.error('Erro ao criar registro de checkout:', insertError);
+      return false;
+    }
+    
+    console.log('Check-in finalizado e checkout registrado com sucesso');
+    return true;
+  } catch (error) {
+    console.error('Erro ao finalizar check-in:', error);
+    return false;
+  }
+}
+
 export async function getActiveCheckins(): Promise<CriancaPresente[]> {
   try {
     console.log('Buscando check-ins ativos...');
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
+    console.log('Data de hoje (início do dia):', hoje.toISOString());
 
-    const { data, error } = await supabase
+    // Buscar diretamente da tabela checkins os check-ins não finalizados de hoje
+    console.log('Buscando check-ins não finalizados...');
+    const { data: checkinsData, error: checkinsError } = await supabase
       .from('checkins')
       .select(`
         id,
+        crianca_id,
+        sala_id,
         data_checkin,
+        responsavel_id,
         qr_gerado,
-        criancas:crianca_id (id, nome),
-        salas:sala_id (id, nome_sala),
-        familias:responsavel_checkin (id, nome_familia)
+        responsavel_checkin
       `)
+      .eq('finalizado', false)
       .gte('data_checkin', hoje.toISOString());
 
-    if (error) {
-      console.error('Erro na consulta:', error);
-      throw error;
+    if (checkinsError) {
+      console.error('Erro na consulta de check-ins ativos:', checkinsError);
+      throw checkinsError;
     }
 
-    console.log('Dados recebidos da tabela checkins:', data);
+    console.log('Check-ins não finalizados encontrados:', checkinsData ? checkinsData.length : 0);
+    
+    if (!checkinsData || checkinsData.length === 0) {
+      return [];
+    }
 
-    return (data || []).map(checkin => ({
+    // Extrair IDs para buscar informações relacionadas
+    const criancaIds = checkinsData.map(c => c.crianca_id);
+    const salaIds = checkinsData.map(c => c.sala_id);
+    const responsavelIds = checkinsData.filter(c => c.responsavel_id).map(c => c.responsavel_id);
+    const familiaIds = checkinsData.filter(c => c.responsavel_checkin).map(c => c.responsavel_checkin);
+
+    // Buscar informações das crianças
+    const { data: criancasData, error: criancasError } = await supabase
+      .from('criancas')
+      .select('id, nome')
+      .in('id', criancaIds);
+
+    if (criancasError) {
+      console.error('Erro ao buscar crianças:', criancasError);
+      throw criancasError;
+    }
+
+    // Buscar informações das salas
+    const { data: salasData, error: salasError } = await supabase
+      .from('salas')
+      .select('id, nome_sala, faixa_etaria_inicio, faixa_etaria_fim')
+      .in('id', salaIds);
+
+    if (salasError) {
+      console.error('Erro ao buscar salas:', salasError);
+      throw salasError;
+    }
+
+    // Buscar informações dos responsáveis
+    let responsaveisMap = {};
+    if (responsavelIds.length > 0) {
+      const { data: responsaveisData, error: responsaveisError } = await supabase
+        .from('responsaveis')
+        .select('id, nome, parentesco')
+        .in('id', responsavelIds);
+
+      if (responsaveisError) {
+        console.error('Erro ao buscar responsáveis:', responsaveisError);
+      } else {
+        responsaveisMap = (responsaveisData || []).reduce((acc, resp) => {
+          acc[resp.id] = {
+            nome: resp.nome,
+            parentesco: resp.parentesco
+          };
+          return acc;
+        }, {});
+      }
+    }
+
+    // Buscar informações das famílias
+    let familiasMap = {};
+    if (familiaIds.length > 0) {
+      const { data: familiasData, error: familiasError } = await supabase
+        .from('familias')
+        .select('id, nome_familia')
+        .in('id', familiaIds);
+
+      if (familiasError) {
+        console.error('Erro ao buscar famílias:', familiasError);
+      } else {
+        familiasMap = (familiasData || []).reduce((acc, fam) => {
+          acc[fam.id] = fam.nome_familia;
+          return acc;
+        }, {});
+      }
+    }
+
+    // Criar mapas para facilitar o acesso aos dados
+    const criancasMap = (criancasData || []).reduce((acc, crianca) => {
+      acc[crianca.id] = crianca.nome;
+      return acc;
+    }, {});
+
+    const salasMap = (salasData || []).reduce((acc, sala) => {
+      acc[sala.id] = {
+        nome: sala.nome_sala,
+        faixa_inicio: sala.faixa_etaria_inicio,
+        faixa_fim: sala.faixa_etaria_fim
+      };
+      return acc;
+    }, {});
+
+    // Montar a lista de check-ins ativos com todas as informações
+    return checkinsData.map(checkin => ({
       id: checkin.id,
-      nome: checkin.criancas?.nome || 'Sem nome',
-      sala: checkin.salas?.nome_sala || 'Sem sala',
+      nome: criancasMap[checkin.crianca_id] || 'Sem nome',
+      sala: salasMap[checkin.sala_id]?.nome || 'Sem sala',
+      faixa_etaria_inicio: salasMap[checkin.sala_id]?.faixa_inicio || 0,
+      faixa_etaria_fim: salasMap[checkin.sala_id]?.faixa_fim || 0,
       horario_checkin: checkin.data_checkin,
-      qr_code: checkin.qr_gerado,
-      responsavel: checkin.familias?.nome_familia || 'Sem responsável'
+      qr_code: checkin.qr_gerado || '',
+      familia: familiasMap[checkin.responsavel_checkin] || 'Sem família',
+      responsavel: responsaveisMap[checkin.responsavel_id]?.nome || 'Não informado',
+      parentesco: responsaveisMap[checkin.responsavel_id]?.parentesco || ''
     }));
   } catch (error) {
     console.error('Erro ao buscar checkins ativos:', error);
+    console.error('Detalhes do erro:', JSON.stringify(error));
     return [];
   }
 } 

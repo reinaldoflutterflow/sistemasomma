@@ -1,5 +1,16 @@
 import { supabase } from "../supabase"
 
+export interface Responsavel {
+  id: string
+  familia_id: string
+  nome: string
+  telefone: string
+  parentesco: string
+  whatsapp: boolean
+  pode_fazer_checkout: boolean
+  observacoes?: string
+}
+
 export interface Familia {
   id: string
   nome_familia: string
@@ -96,15 +107,94 @@ export async function getCriancasPorFamilia(familia_id: string, sala_id: string)
   }
 }
 
-export async function realizarCheckin(sala_id: string, crianca_id: string) {
+export async function getResponsaveisPorFamilia(familia_id: string): Promise<Responsavel[]> {
   try {
+    const { data, error } = await supabase
+      .from('responsaveis')
+      .select('*')
+      .eq('familia_id', familia_id)
+      .order('nome')
+
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    console.error('Erro ao buscar responsáveis:', error)
+    return []
+  }
+}
+
+export async function realizarCheckin(sala_id: string, crianca_id: string, responsavel_id: string) {
+  try {
+    // Buscar informações da criança para obter a família
+    const { data: criancaData, error: criancaError } = await supabase
+      .from('criancas')
+      .select('familia_id, nome')
+      .eq('id', crianca_id)
+      .single();
+    
+    if (criancaError) throw criancaError;
+    if (!criancaData) throw new Error('Criança não encontrada');
+    
+    // Buscar informações da sala
+    const { data: salaData, error: salaError } = await supabase
+      .from('salas')
+      .select('nome_sala')
+      .eq('id', sala_id)
+      .single();
+    
+    if (salaError) throw salaError;
+    if (!salaData) throw new Error('Sala não encontrada');
+    
+    // Buscar informações do responsável
+    const { data: responsavelData, error: responsavelError } = await supabase
+      .from('responsaveis')
+      .select('nome, parentesco')
+      .eq('id', responsavel_id)
+      .single();
+    
+    if (responsavelError) throw responsavelError;
+    if (!responsavelData) throw new Error('Responsável não encontrado');
+    
+    // Criar objeto com dados completos para o QR code
+    const dadosQR = {
+      crianca: {
+        id: crianca_id,
+        nome: criancaData.nome
+      },
+      sala: {
+        id: sala_id,
+        nome: salaData.nome_sala
+      },
+      responsavel: {
+        id: responsavel_id,
+        nome: responsavelData.nome,
+        parentesco: responsavelData.parentesco
+      },
+      familia_id: criancaData.familia_id,
+      data_checkin: new Date().toISOString()
+    };
+    
+    // Gerar QR code com os dados completos
+    const qr_gerado = JSON.stringify(dadosQR);
+    
+    console.log('Realizando check-in com os dados:', { 
+      sala_id, 
+      crianca_id, 
+      responsavel_id, 
+      responsavel_checkin: criancaData.familia_id,
+      qr_gerado 
+    });
+    
     const { error } = await supabase
       .from('checkins')
       .insert([
         {
           sala_id,
           crianca_id,
-          data_checkin: new Date().toISOString()
+          responsavel_id,
+          responsavel_checkin: criancaData.familia_id, // UUID da família
+          data_checkin: new Date().toISOString(),
+          qr_gerado
         }
       ])
 
