@@ -726,7 +726,7 @@
 import { ref, onMounted, reactive, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { logout } from '../services/auth';
-import { getDashboardData, getActiveCheckins, finalizarCheckin } from '../services/dashboard';
+import { getDashboardData, getActiveCheckins, finalizarCheckin, verificarCheckoutExistente } from '../services/dashboard';
 import type { DashboardData, CriancaPresente } from '../services/dashboard';
 import LineChart from './LineChart.vue';
 import { supabase } from '../supabase';
